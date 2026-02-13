@@ -78,7 +78,7 @@ function Ensure-Scope {
     [Parameter(Mandatory)][string]$DnsServer
   )
 
-  # Derivar NetworkID (simple): 192.168.100.0 desde StartRange (asumiendo /24 típico)
+  # Derivar NetworkID (simple): 192.168.100.0 desde StartRange
   $oct = $StartRange.Split('.')
   $networkId = "$($oct[0]).$($oct[1]).$($oct[2]).0"
 
@@ -88,7 +88,8 @@ function Ensure-Scope {
     Write-Host "[INFO] Creando Scope IPv4 $networkId ..."
     Add-DhcpServerv4Scope -Name $ScopeName -StartRange $StartRange -EndRange $EndRange -SubnetMask $SubnetMask -State Active | Out-Null
     Write-Host "[OK] Scope creado."
-  } else {
+  }
+  else {
     Write-Host "[OK] Scope ya existe ($networkId). No se recrea."
   }
 
@@ -97,7 +98,7 @@ function Ensure-Scope {
   Set-DhcpServerv4Scope -ScopeId $networkId -LeaseDuration $lease | Out-Null
   Write-Host "[OK] Lease configurado: $LeaseMinutes minutos."
 
-  # Options: Router + DNS
+  # Options
   Set-DhcpServerv4OptionValue -ScopeId $networkId -Router $Gateway -DnsServer $DnsServer | Out-Null
   Write-Host "[OK] Opciones configuradas: Gateway=$Gateway DNS=$DnsServer"
 }
