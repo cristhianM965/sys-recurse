@@ -25,7 +25,10 @@ function Choose-Adapter {
   foreach ($a in $adapters) {
     $ip = (Get-NetIPAddress -InterfaceIndex $a.IfIndex -AddressFamily IPv4 -ErrorAction SilentlyContinue |
       Where-Object { $_.IPAddress -ne "127.0.0.1" } | Select-Object -First 1).IPAddress
-    Write-Host ("[{0}] {1}  (IPv4: {2})" -f $i, $a.Name, ($ip ?? "Sin IPv4"))
+
+    $ipText = if ($null -ne $ip -and $ip -ne "") { $ip } else { "Sin IPv4" }
+    Write-Host ("[{0}] {1}  (IPv4: {2})" -f $i, $a.Name, $ipText)
+
     $i++
   }
 
