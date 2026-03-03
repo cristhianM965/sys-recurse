@@ -1,11 +1,25 @@
+# lib/30-iis-site.ps1
+#requires -RunAsAdministrator
+$ErrorActionPreference = "Stop"
+
 function New-OrUpdate-IISFTPSite {
   Core-Banner "4) Sitio IIS FTP + Auth + User Isolation + Reglas FTP"
 
   Import-Module WebAdministration
 
+  # Parar FTP para evitar locks mientras tocamos config
+  try { Stop-Service ftpsvc -Force -ErrorAction SilentlyContinue } catch {}
+  Start-Sleep -Seconds 1
+
+  # Desbloquear secciones para permitir config a nivel sitio (evita overrideModeDefault="Deny")
+  $appcmd = Join-Path $env:windir "System32\inetsrv\appcmd.exe"
+  & $appcmd unlock config /section:system.ftpServer/security/authorization | Out-Null
+  & $appcmd unlock config /section:system.ftpServer/security/authentication/anonymousAuthentication | Out-Null
+  & $appcmd unlock config /section:system.ftpServer/security/authentication/basicAuthentication | Out-Null
+
   # Crear sitio si no existe
   $sitePath = "IIS:\Sites\$($Global:FTP_SITE_NAME)"
-  if(-not (Test-Path $sitePath)){
+  if (-not (Test-Path $sitePath)) {
     New-WebFtpSite -Name $Global:FTP_SITE_NAME -Port $Global:FTP_PORT -PhysicalPath $Global:T5_SITE_ROOT -Force | Out-Null
     Core-Log "Sitio FTP creado: $($Global:FTP_SITE_NAME)"
   } else {
@@ -16,42 +30,47 @@ function New-OrUpdate-IISFTPSite {
   Set-ItemProperty "IIS:\Sites\$($Global:FTP_SITE_NAME)" -Name ftpServer.security.authentication.anonymousAuthentication.enabled -Value $true
   Set-ItemProperty "IIS:\Sites\$($Global:FTP_SITE_NAME)" -Name ftpServer.security.authentication.basicAuthentication.enabled -Value $true
 
-  # User Isolation: IsolateUsers (usa carpeta LocalUser\%USERNAME% bajo el site root)
-  # Nota: IIS espera la estructura: <siteRoot>\LocalUser\<username>\...
-  Set-ItemProperty "IIS:\Sites\$($Global:FTP_SITE_NAME)" -Name ftpServer.userIsolation.mode -Value 2  # 2 = IsolateUsers
+  # User Isolation: IsolateUsers -> <siteRoot>\LocalUser\<username>\
+  Set-ItemProperty "IIS:\Sites\$($Global:FTP_SITE_NAME)" -Name ftpServer.userIsolation.mode -Value 2
 
-  # Evitar bloqueo de applicationHost.config
+  # Reinicio corto para liberar locks en config (si aplica)
   iisreset /stop | Out-Null
   Start-Sleep -Seconds 2
   iisreset /start | Out-Null
   Start-Sleep -Seconds 2
 
-  # --- Reglas de autorización FTP ---
-  # Limpiar reglas existentes (idempotente)
-# Eliminar reglas existentes sin Clear-WebConfiguration (evita locks)
-$filter = "system.ftpServer/security/authorization"
-$psPath = "IIS:\Sites\$($Global:FTP_SITE_NAME)"
+  # --- Reglas de autorización FTP (idempotente, sin Clear-WebConfiguration) ---
+  $filter = "system.ftpServer/security/authorization"
+  $psPath = "IIS:\Sites\$($Global:FTP_SITE_NAME)"
 
-# Remueve todas las reglas existentes
-while ($true) {
-  $current = Get-WebConfiguration -PSPath $psPath -Filter "$filter/add" -ErrorAction SilentlyContinue
-  if (-not $current) { break }
+  # Remover reglas existentes por índice hasta dejar vacío
+  while ($true) {
+    $list = Get-WebConfiguration -PSPath $psPath -Filter "$filter/add" -ErrorAction SilentlyContinue
+    if (-not $list) { break }
+    try {
+      Remove-WebConfigurationProperty -PSPath $psPath -Filter $filter -Name "." -AtIndex 0 -ErrorAction SilentlyContinue | Out-Null
+    } catch {
+      break
+    }
+    Start-Sleep -Milliseconds 150
+  }
 
-  # Quita la primera regla encontrada (loop hasta que no haya)
-  Remove-WebConfigurationProperty -PSPath $psPath -Filter $filter -Name "." -AtElement @{users=$current.users;roles=$current.roles;permissions=$current.permissions;accessType=$current.accessType} -ErrorAction SilentlyContinue
-  # Si no coincide exacto, intenta remover por índice
-  try { Remove-WebConfigurationProperty -PSPath $psPath -Filter $filter -Name "." -AtIndex 0 -ErrorAction SilentlyContinue } catch {}
-  Start-Sleep -Milliseconds 200
-}
-  # 1) Anónimo: SOLO lectura (a nivel sitio). Como solo verá /general, está OK.
-  Add-WebConfiguration -PSPath "IIS:\Sites\$($Global:FTP_SITE_NAME)" -Filter "system.ftpServer/security/authorization" -Value @{
-    accessType="Allow"; users="anonymous"; permissions="Read"
+  # 1) Anónimo: SOLO lectura
+  Add-WebConfiguration -PSPath $psPath -Filter $filter -Value @{
+    accessType  = "Allow"
+    users       = "anonymous"
+    permissions = "Read"
   } | Out-Null
 
-  # 2) Autenticados: permitir RW para usuarios locales (a nivel sitio)
-  Add-WebConfiguration -PSPath "IIS:\Sites\$($Global:FTP_SITE_NAME)" -Filter "system.ftpServer/security/authorization" -Value @{
-    accessType="Allow"; users="*"; permissions="Read,Write"
+  # 2) Autenticados: lectura + escritura
+  Add-WebConfiguration -PSPath $psPath -Filter $filter -Value @{
+    accessType  = "Allow"
+    users       = "*"
+    permissions = "Read,Write"
   } | Out-Null
 
-  Core-Log "Auth + Isolation + Authorization configurado"
+  # Levantar FTP
+  try { Start-Service ftpsvc -ErrorAction SilentlyContinue } catch {}
+
+  Core-Log "Auth + Isolation + Authorization configurado (unlock aplicado)"
 }
