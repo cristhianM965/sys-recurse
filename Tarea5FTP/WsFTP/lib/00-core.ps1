@@ -22,6 +22,13 @@ $Global:T5_LOG = "C:\FTP\tarea5_ftp_windows.log"
 
 function Core-Log($msg){
   $line = "[{0}] {1}" -f (Get-Date -Format "yyyy-MM-dd HH:mm:ss"), $msg
+
+  # Asegurar que exista la carpeta del log antes de escribir
+  $logDir = Split-Path -Parent $Global:T5_LOG
+  if (-not (Test-Path $logDir)) {
+    New-Item -ItemType Directory -Path $logDir -Force | Out-Null
+  }
+
   $line | Tee-Object -FilePath $Global:T5_LOG -Append | Out-Null
 }
 
