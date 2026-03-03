@@ -73,8 +73,7 @@ function Set-BaseNTFSPerms {
   Reset-AclInheritance $Global:T5_LOCALUSER $true
 
   # Solo Administrators y SYSTEM
-  Grant-Acl $Global:T5_LOCALUSER "Administrators" "FullControl"
-  Grant-Acl $Global:T5_LOCALUSER "SYSTEM" "FullControl"
-
+ Grant-Acl $Global:T5_LOCALUSER "S-1-5-32-544" "FullControl"  # Administradores
+Grant-Acl $Global:T5_LOCALUSER "S-1-5-18"      "FullControl"  # SYSTEM
   Core-Log "ACL base aplicada correctamente (general/grupos/LocalUser)"
 }

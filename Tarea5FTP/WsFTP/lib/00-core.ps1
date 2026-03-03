@@ -85,9 +85,34 @@ function Reset-AclInheritance($path, [bool]$disableInheritance){
   Set-Acl -Path $path -AclObject $acl
 }
 
+function Resolve-Identity($identity){
+  # Si ya es SID
+  if ($identity -match '^S-\d-\d+(-\d+)+$') {
+    return New-Object System.Security.Principal.SecurityIdentifier($identity)
+  }
+
+  # Mapeos inmunes al idioma (well-known)
+  switch -Regex ($identity) {
+    '^Administrators$' { return New-Object System.Security.Principal.SecurityIdentifier('S-1-5-32-544') } # BUILTIN\Administrators
+    '^Administradores$' { return New-Object System.Security.Principal.SecurityIdentifier('S-1-5-32-544') }
+    '^SYSTEM$' { return New-Object System.Security.Principal.SecurityIdentifier('S-1-5-18') }             # Local System
+    '^IIS_IUSRS$' { return New-Object System.Security.Principal.SecurityIdentifier('S-1-5-32-568') }      # IIS_IUSRS
+    '^Everyone$' { return New-Object System.Security.Principal.SecurityIdentifier('S-1-1-0') }            # Everyone
+  }
+
+  # Intentar traducir nombre normal -> SID
+  try {
+    $nt = New-Object System.Security.Principal.NTAccount($identity)
+    return $nt.Translate([System.Security.Principal.SecurityIdentifier])
+  } catch {
+    throw "No se pudo resolver la identidad: $identity"
+  }
+}
+
 function Grant-Acl($path, $identity, $rights, $inherit="ContainerInherit,ObjectInherit", $prop="None"){
   $acl = Get-Acl $path
-  $rule = New-Object System.Security.AccessControl.FileSystemAccessRule($identity, $rights, $inherit, $prop, "Allow")
+  $sid = Resolve-Identity $identity
+  $rule = New-Object System.Security.AccessControl.FileSystemAccessRule($sid, $rights, $inherit, $prop, "Allow")
   $acl.SetAccessRule($rule)
   Set-Acl $path $acl
 }
