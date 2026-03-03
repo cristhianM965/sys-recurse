@@ -41,8 +41,6 @@ function Set-BaseNTFSPerms {
 
   # Lectura para identidades IIS
   Grant-Acl $Global:T5_GENERAL "IIS_IUSRS" "ReadAndExecute"
-  Grant-Acl $Global:T5_GENERAL "IUSR"      "ReadAndExecute"
-
   # Escritura para autenticados (grupo común)
   Grant-Acl $Global:T5_GENERAL $Global:COMMON_GROUP "Modify"
 
