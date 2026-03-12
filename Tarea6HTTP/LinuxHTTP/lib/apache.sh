@@ -21,6 +21,7 @@ linux_install_apache() {
   linux_configure_apache_port "$port"
   linux_harden_apache
   linux_restrict_web_permissions "www-data" "/var/www"
+  linux_prepare_webroot "/var/www/apache2" "www-data" "www-data"
   linux_configure_firewall "$port"
 
   systemctl enable apache2
@@ -43,16 +44,15 @@ linux_configure_apache_port() {
   sed -i '/^Listen /d' "$APACHE_PORTS_CONF"
   echo "Listen ${port}" >> "$APACHE_PORTS_CONF"
 
-  if grep -q '<VirtualHost \*:' "$APACHE_DEFAULT_SITE"; then
-    sed -i -E "s#<VirtualHost \*:[0-9]+>#<VirtualHost *:${port}>#g" "$APACHE_DEFAULT_SITE"
-  else
-    cat >> "$APACHE_DEFAULT_SITE" <<EOF
-
+  cat > "$APACHE_DEFAULT_SITE" <<EOF
 <VirtualHost *:${port}>
-    DocumentRoot /var/www/html
+    ServerAdmin webmaster@localhost
+    DocumentRoot /var/www/apache2
+
+    ErrorLog \${APACHE_LOG_DIR}/error.log
+    CustomLog \${APACHE_LOG_DIR}/access.log combined
 </VirtualHost>
 EOF
-  fi
 
   apache2ctl configtest
 }

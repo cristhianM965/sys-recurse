@@ -247,3 +247,13 @@ linux_restrict_web_permissions() {
   chown -R "${service_user}:${service_user}" "$target_dir" 2>/dev/null || chown -R "${service_user}:www-data" "$target_dir" 2>/dev/null || true
   chmod -R 750 "$target_dir"
 }
+
+linux_prepare_webroot() {
+  local dir="$1"
+  local owner="$2"
+  local group="$3"
+
+  mkdir -p "$dir"
+  chown -R "${owner}:${group}" "$dir"
+  chmod -R 755 "$dir"
+}

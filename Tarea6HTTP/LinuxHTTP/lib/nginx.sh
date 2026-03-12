@@ -18,6 +18,7 @@ linux_install_nginx() {
   linux_configure_nginx_port "$port"
   linux_harden_nginx
   linux_restrict_web_permissions "www-data" "/var/www"
+  linux_prepare_webroot "/var/www/nginx" "www-data" "www-data"
   linux_configure_firewall "$port"
 
   nginx -t
@@ -36,10 +37,21 @@ linux_configure_nginx_port() {
 
   cp "$NGINX_DEFAULT_SITE" "${NGINX_DEFAULT_SITE}.bak"
 
-  sed -i -E "s/listen 80 default_server;/listen ${port} default_server;/g" "$NGINX_DEFAULT_SITE"
-  sed -i -E "s/listen \[::\]:80 default_server;/listen [::]:${port} default_server;/g" "$NGINX_DEFAULT_SITE"
-  sed -i -E "s/listen 80;/listen ${port};/g" "$NGINX_DEFAULT_SITE"
-  sed -i -E "s/listen \[::\]:80;/listen [::]:${port};/g" "$NGINX_DEFAULT_SITE"
+  cat > "$NGINX_DEFAULT_SITE" <<EOF
+server {
+    listen ${port} default_server;
+    listen [::]:${port} default_server;
+
+    root /var/www/nginx;
+    index index.nginx-debian.html index.html index.htm;
+
+    server_name _;
+
+    location / {
+        try_files \$uri \$uri/ =404;
+    }
+}
+EOF
 
   nginx -t
 }
