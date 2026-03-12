@@ -212,22 +212,24 @@ linux_choose_version_from_apt() {
   mapfile -t versions < <(linux_get_apt_versions "$package_name")
 
   if [[ ${#versions[@]} -eq 0 ]]; then
-    echo "No se encontraron versiones para ${service_name} en el repositorio."
+    echo "No se encontraron versiones para ${service_name} en el repositorio." >&2
     return 1
   fi
 
-  echo
-  echo "Versiones disponibles para ${service_name}:"
+  echo >&2
+  echo "Versiones disponibles para ${service_name}:" >&2
+
   local i=1
   for v in "${versions[@]}"; do
-    echo "  [$i] $v"
+    echo "  [$i] $v" >&2
     ((i++))
   done
-  echo
+  echo >&2
 
   local option
   option="$(linux_safe_input_number "Elige una versión: " "${#versions[@]}")"
-  echo "${versions[$((option-1))]}"
+
+  printf '%s\n' "${versions[$((option-1))]}"
 }
 
 linux_restrict_web_permissions() {

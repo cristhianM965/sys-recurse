@@ -17,7 +17,6 @@ linux_install_nginx() {
 
   linux_configure_nginx_port "$port"
   linux_harden_nginx
-  linux_write_index "/var/www/html" "Nginx" "$version" "$port"
   linux_restrict_web_permissions "www-data" "/var/www"
   linux_configure_firewall "$port"
 

@@ -20,7 +20,6 @@ linux_install_apache() {
 
   linux_configure_apache_port "$port"
   linux_harden_apache
-  linux_write_index "/var/www/html" "Apache2" "$version" "$port"
   linux_restrict_web_permissions "www-data" "/var/www"
   linux_configure_firewall "$port"
 
