@@ -96,3 +96,26 @@ linux_apache_flow() {
   linux_confirm "¿Deseas continuar con la instalación?" || return 0
   linux_install_apache "$version" "$port"
 }
+
+linux_uninstall_apache() {
+  echo "Desinstalando Apache2..."
+
+  systemctl stop apache2 2>/dev/null || true
+  systemctl disable apache2 2>/dev/null || true
+
+  export DEBIAN_FRONTEND=noninteractive
+  apt-get purge -y apache2 apache2-bin apache2-data apache2-utils 2>/dev/null || true
+  apt-get autoremove -y
+
+  rm -f "$APACHE_HEADERS_CONF"
+
+  if [[ -f "${APACHE_PORTS_CONF}.bak" ]]; then
+    cp -f "${APACHE_PORTS_CONF}.bak" "$APACHE_PORTS_CONF" 2>/dev/null || true
+  fi
+
+  if [[ -f "${APACHE_DEFAULT_SITE}.bak" ]]; then
+    cp -f "${APACHE_DEFAULT_SITE}.bak" "$APACHE_DEFAULT_SITE" 2>/dev/null || true
+  fi
+
+  echo "Apache2 desinstalado correctamente."
+}

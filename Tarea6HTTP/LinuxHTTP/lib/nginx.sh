@@ -81,3 +81,22 @@ linux_nginx_flow() {
   linux_confirm "¿Deseas continuar con la instalación?" || return 0
   linux_install_nginx "$version" "$port"
 }
+
+linux_uninstall_nginx() {
+  echo "Desinstalando Nginx..."
+
+  systemctl stop nginx 2>/dev/null || true
+  systemctl disable nginx 2>/dev/null || true
+
+  export DEBIAN_FRONTEND=noninteractive
+  apt-get purge -y nginx nginx-common nginx-core 2>/dev/null || true
+  apt-get autoremove -y
+
+  rm -f "$NGINX_SECURITY_SNIPPET"
+
+  if [[ -f "${NGINX_DEFAULT_SITE}.bak" ]]; then
+    cp -f "${NGINX_DEFAULT_SITE}.bak" "$NGINX_DEFAULT_SITE" 2>/dev/null || true
+  fi
+
+  echo "Nginx desinstalado correctamente."
+}

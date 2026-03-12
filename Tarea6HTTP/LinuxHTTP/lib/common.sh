@@ -208,28 +208,34 @@ linux_get_apt_versions() {
 linux_choose_version_from_apt() {
   local package_name="$1"
   local service_name="$2"
+  local option
+  local i
 
   mapfile -t versions < <(linux_get_apt_versions "$package_name")
 
   if [[ ${#versions[@]} -eq 0 ]]; then
-    echo "No se encontraron versiones para ${service_name} en el repositorio." >&2
+    echo "No se encontraron versiones para ${service_name} en el repositorio." > /dev/tty
     return 1
   fi
 
-  echo >&2
-  echo "Versiones disponibles para ${service_name}:" >&2
+  echo > /dev/tty
+  echo "Versiones disponibles para ${service_name}:" > /dev/tty
 
-  local i=1
+  i=1
   for v in "${versions[@]}"; do
-    echo "  [$i] $v" >&2
+    echo "  [$i] $v" > /dev/tty
     ((i++))
   done
-  echo >&2
+  echo > /dev/tty
 
-  local option
-  option="$(linux_safe_input_number "Elige una versión: " "${#versions[@]}")"
-
-  printf '%s\n' "${versions[$((option-1))]}"
+  while true; do
+    read -r -p "Elige una versión: " option < /dev/tty
+    if [[ "$option" =~ ^[0-9]+$ ]] && (( option >= 1 && option <= ${#versions[@]} )); then
+      printf '%s\n' "${versions[$((option-1))]}"
+      return 0
+    fi
+    echo "Opción inválida." > /dev/tty
+  done
 }
 
 linux_restrict_web_permissions() {

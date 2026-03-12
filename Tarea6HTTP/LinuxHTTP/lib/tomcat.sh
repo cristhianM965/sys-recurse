@@ -8,19 +8,27 @@ linux_choose_tomcat_version() {
     "9.0.102"
     "9.0.100"
   )
+  local option
+  local i
 
-  echo
-  echo "Versiones disponibles para Tomcat:"
-  local i=1
+  echo > /dev/tty
+  echo "Versiones disponibles para Tomcat:" > /dev/tty
+
+  i=1
   for v in "${versions[@]}"; do
-    echo "  [$i] $v"
+    echo "  [$i] $v" > /dev/tty
     ((i++))
   done
-  echo
+  echo > /dev/tty
 
-  local option
-  option="$(linux_safe_input_number "Elige una versión: " "${#versions[@]}")"
-  echo "${versions[$((option-1))]}"
+  while true; do
+    read -r -p "Elige una versión: " option < /dev/tty
+    if [[ "$option" =~ ^[0-9]+$ ]] && (( option >= 1 && option <= ${#versions[@]} )); then
+      printf '%s\n' "${versions[$((option-1))]}"
+      return 0
+    fi
+    echo "Opción inválida." > /dev/tty
+  done
 }
 
 linux_install_tomcat() {
@@ -38,7 +46,6 @@ linux_install_tomcat() {
   linux_configure_tomcat_port "$port"
   linux_harden_tomcat
   linux_create_tomcat_systemd
-  linux_write_index "${TOMCAT_BASE_DIR}/webapps/ROOT" "Tomcat" "$version" "$port"
   linux_restrict_web_permissions "$TOMCAT_USER" "${TOMCAT_BASE_DIR}/webapps"
   linux_configure_firewall "$port"
 
@@ -66,12 +73,12 @@ linux_prepare_tomcat_dirs() {
   chown -R "${TOMCAT_USER}:${TOMCAT_GROUP}" "$TOMCAT_BASE_DIR"
   chmod 750 "$TOMCAT_BASE_DIR"
 }
-
 linux_download_and_extract_tomcat() {
   local version="$1"
   local temp_file="/tmp/apache-tomcat.tar.gz"
   local major_version
   local download_url
+  local extracted_dir
 
   major_version="$(echo "$version" | cut -d'.' -f1)"
 
@@ -85,17 +92,29 @@ linux_download_and_extract_tomcat() {
   echo "Descargando Tomcat desde:"
   echo "$download_url"
 
-  if ! curl -fL "$download_url" -o "$temp_file"; then
+  rm -f "$temp_file"
+  rm -rf /tmp/apache-tomcat-*
+
+  if ! curl -fL --retry 3 --connect-timeout 20 "$download_url" -o "$temp_file"; then
     echo "No se pudo descargar Tomcat versión ${version}."
     return 1
   fi
 
+  [[ -s "$temp_file" ]] || {
+    echo "El archivo descargado está vacío."
+    return 1
+  }
+
   rm -rf "${TOMCAT_BASE_DIR:?}/"*
   tar -xzf "$temp_file" -C /tmp
 
-  local extracted_dir="/tmp/apache-tomcat-${version}"
-  [[ -d "$extracted_dir" ]] || { echo "No se encontró el directorio extraído de Tomcat."; return 1; }
+  extracted_dir="/tmp/apache-tomcat-${version}"
+  [[ -d "$extracted_dir" ]] || {
+    echo "No se encontró el directorio extraído de Tomcat."
+    return 1
+  }
 
+  mkdir -p "$TOMCAT_BASE_DIR"
   cp -a "${extracted_dir}/." "$TOMCAT_BASE_DIR/"
   chown -R "${TOMCAT_USER}:${TOMCAT_GROUP}" "$TOMCAT_BASE_DIR"
   chmod -R 750 "$TOMCAT_BASE_DIR"
@@ -187,4 +206,26 @@ linux_tomcat_flow() {
 
   linux_confirm "¿Deseas continuar con la instalación?" || return 0
   linux_install_tomcat "$version" "$port"
+}
+
+linux_uninstall_tomcat() {
+  echo "Desinstalando Tomcat..."
+
+  systemctl stop "$TOMCAT_SERVICE_NAME" 2>/dev/null || true
+  systemctl disable "$TOMCAT_SERVICE_NAME" 2>/dev/null || true
+
+  rm -f "$TOMCAT_SYSTEMD_FILE"
+  systemctl daemon-reload
+
+  rm -rf "$TOMCAT_BASE_DIR"
+
+  if id "$TOMCAT_USER" >/dev/null 2>&1; then
+    userdel -r "$TOMCAT_USER" 2>/dev/null || true
+  fi
+
+  if getent group "$TOMCAT_GROUP" >/dev/null 2>&1; then
+    groupdel "$TOMCAT_GROUP" 2>/dev/null || true
+  fi
+
+  echo "Tomcat desinstalado correctamente."
 }
