@@ -52,7 +52,14 @@ function New-FTPUsersWizard {
   for($i=1; $i -le [int]$n; $i++){
     Write-Host "---- Usuario $i/$n ----"
     $u = Read-Host "Nombre de usuario"
-    $pwd = Read-Host "Contraseña"
+    $pwd1 = (Read-Host "Contraseña").Trim()
+    $pwd2 = (Read-Host "Confirmar contraseña").Trim()
+
+    if ($pwd1 -ne $pwd2) {
+    throw "Las contraseñas no coinciden para el usuario $u"
+    }
+
+    $pwd = $pwd1
 
     Write-Host "Grupo: 1) $($Global:GROUP_A)  2) $($Global:GROUP_B)"
     $opt = Read-Host "Elige (1/2)"

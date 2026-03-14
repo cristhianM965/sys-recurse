@@ -52,16 +52,34 @@ function Ensure-LocalGroup($name){
 }
 
 function Ensure-LocalUser($username, $passwordPlain){
+  $passwordPlain = $passwordPlain.Trim()
+
+  if ([string]::IsNullOrWhiteSpace($passwordPlain)) {
+    throw "La contraseña no puede estar vacía para el usuario $username"
+  }
+
+  if ($passwordPlain.Length -lt 6) {
+    throw "La contraseña debe tener al menos 6 caracteres para el usuario $username"
+  }
+
+  $sec = ConvertTo-SecureString $passwordPlain -AsPlainText -Force
+
   if (-not (Get-LocalUser -Name $username -ErrorAction SilentlyContinue)) {
-    $sec = ConvertTo-SecureString $passwordPlain -AsPlainText -Force
-    New-LocalUser -Name $username -Password $sec -PasswordNeverExpires:$true -UserMayNotChangePassword:$false | Out-Null
+    New-LocalUser `
+      -Name $username `
+      -Password $sec `
+      -PasswordNeverExpires:$true `
+      -AccountNeverExpires:$true `
+      -UserMayNotChangePassword:$false | Out-Null
+
     Core-Log "Usuario creado: $username"
   } else {
-    # Actualizar password si ya existe
-    $sec = ConvertTo-SecureString $passwordPlain -AsPlainText -Force
     Set-LocalUser -Name $username -Password $sec | Out-Null
     Core-Log "Password actualizado: $username"
   }
+
+  # Asegurar que esté activo
+  & net user $username /active:yes | Out-Null
 }
 
 function Add-ToGroup($group, $user){

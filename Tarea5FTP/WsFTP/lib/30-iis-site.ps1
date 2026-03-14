@@ -26,7 +26,11 @@ function New-OrUpdate-IISFTPSite {
     Core-Log "Sitio FTP ya existe: $($Global:FTP_SITE_NAME)"
   }
 
-  # Habilitar autenticación
+    # No forzar SSL
+  Set-ItemProperty "IIS:\Sites\$($Global:FTP_SITE_NAME)" -Name ftpServer.security.ssl.controlChannelPolicy -Value 0
+  Set-ItemProperty "IIS:\Sites\$($Global:FTP_SITE_NAME)" -Name ftpServer.security.ssl.dataChannelPolicy -Value 0
+
+  # Habilitar autenticaciones
   Set-ItemProperty "IIS:\Sites\$($Global:FTP_SITE_NAME)" -Name ftpServer.security.authentication.anonymousAuthentication.enabled -Value $true
   Set-ItemProperty "IIS:\Sites\$($Global:FTP_SITE_NAME)" -Name ftpServer.security.authentication.basicAuthentication.enabled -Value $true
 
@@ -55,17 +59,15 @@ function New-OrUpdate-IISFTPSite {
     Start-Sleep -Milliseconds 150
   }
 
-  # 1) Anónimo: SOLO lectura
   Add-WebConfiguration -PSPath $psPath -Filter $filter -Value @{
     accessType  = "Allow"
     users       = "anonymous"
     permissions = "Read"
   } | Out-Null
 
-  # 2) Autenticados: lectura + escritura
   Add-WebConfiguration -PSPath $psPath -Filter $filter -Value @{
     accessType  = "Allow"
-    users       = "*"
+    roles       = "ftpusers"
     permissions = "Read,Write"
   } | Out-Null
 
