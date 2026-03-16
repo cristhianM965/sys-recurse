@@ -97,8 +97,16 @@ function Configurar-AislamientoUsuarios {
 function Reiniciar-SitioFTP {
     Write-Host "Reiniciando sitio FTP..." -ForegroundColor Yellow
 
-    Stop-Website -Name $Global:SiteName -ErrorAction SilentlyContinue
-    Start-Website -Name $Global:SiteName
+    $rutaSitio = "IIS:\Sites\$($Global:SiteName)"
+
+    if (Test-Path $rutaSitio) {
+        Stop-WebItem -PSPath $rutaSitio -ErrorAction SilentlyContinue
+        Start-WebItem -PSPath $rutaSitio -ErrorAction SilentlyContinue
+        Write-Host "Sitio FTP reiniciado." -ForegroundColor Green
+    }
+    else {
+        Write-Host "No se encontró el sitio FTP en IIS." -ForegroundColor Red
+    }
 }
 
 function Configurar-FTPCompleto {
