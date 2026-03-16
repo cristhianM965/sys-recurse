@@ -1,5 +1,5 @@
 
-Join-Path $PSScriptRoot ".\prueba ftp\validadores.ps1"
+Join-Path $PSScriptRoot ".\prueba-ftp\validadores.ps1"
 Import-Module WebAdministration -Force
 function gestor_usuarios{
     

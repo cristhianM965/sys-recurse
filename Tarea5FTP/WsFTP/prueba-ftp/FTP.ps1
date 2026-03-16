@@ -1,6 +1,6 @@
 #Importacion de modulos
 
-$modulosPath = Join-Path $PSScriptRoot "..\prueba ftp"
+$modulosPath = Join-Path $PSScriptRoot "..\prueba-ftp"
 . (Join-Path $modulosPath "usuarios.ps1")
 . (Join-Path $modulosPath "validadores.ps1")
 
