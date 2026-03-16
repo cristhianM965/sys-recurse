@@ -19,21 +19,21 @@ function Configurar-PermisosBase {
     Write-Host "Configurando permisos base..." -ForegroundColor Yellow
 
     icacls $Global:FtpRoot /inheritance:r | Out-Null
-    icacls $Global:FtpRoot /grant "Administrators:(OI)(CI)F" "SYSTEM:(OI)(CI)F" | Out-Null
+    icacls $Global:FtpRoot /grant "Administradores:(OI)(CI)F" "SYSTEM:(OI)(CI)F" | Out-Null
 
     icacls $Global:GeneralPath /inheritance:r | Out-Null
-    icacls $Global:GeneralPath /grant "Administrators:(OI)(CI)F" "SYSTEM:(OI)(CI)F" | Out-Null
+    icacls $Global:GeneralPath /grant "Administradores:(OI)(CI)F" "SYSTEM:(OI)(CI)F" | Out-Null
     icacls $Global:GeneralPath /grant "IUSR:(OI)(CI)RX" | Out-Null
-    icacls $Global:GeneralPath /grant "Users:(OI)(CI)M" | Out-Null
+    icacls $Global:GeneralPath /grant "Usuarios:(OI)(CI)M" | Out-Null
 
     icacls $Global:RepPath /inheritance:r | Out-Null
-    icacls $Global:RepPath /grant "Administrators:(OI)(CI)F" "SYSTEM:(OI)(CI)F" "$($Global:Grupo1):(OI)(CI)M" | Out-Null
+    icacls $Global:RepPath /grant "Administradores:(OI)(CI)F" "SYSTEM:(OI)(CI)F" "$($Global:Grupo1):(OI)(CI)M" | Out-Null
 
     icacls $Global:RecPath /inheritance:r | Out-Null
-    icacls $Global:RecPath /grant "Administrators:(OI)(CI)F" "SYSTEM:(OI)(CI)F" "$($Global:Grupo2):(OI)(CI)M" | Out-Null
+    icacls $Global:RecPath /grant "Administradores:(OI)(CI)F" "SYSTEM:(OI)(CI)F" "$($Global:Grupo2):(OI)(CI)M" | Out-Null
 
     icacls $Global:UsersPath /inheritance:r | Out-Null
-    icacls $Global:UsersPath /grant "Administrators:(OI)(CI)F" "SYSTEM:(OI)(CI)F" | Out-Null
+    icacls $Global:UsersPath /grant "Administradores:(OI)(CI)F" "SYSTEM:(OI)(CI)F" | Out-Null
 }
 
 function Crear-EstructuraUsuario {
@@ -62,15 +62,16 @@ function Crear-EstructuraUsuario {
 
     if ($Grupo -eq $Global:Grupo1) {
         cmd /c "mklink /J `"$linkGrupo`" `"$($Global:RepPath)`"" | Out-Null
-    } else {
+    }
+    else {
         cmd /c "mklink /J `"$linkGrupo`" `"$($Global:RecPath)`"" | Out-Null
     }
 
     icacls $userRoot /inheritance:r | Out-Null
-    icacls $userRoot /grant "Administrators:(OI)(CI)F" "SYSTEM:(OI)(CI)F" "$Usuario:(OI)(CI)M" | Out-Null
+    icacls $userRoot /grant "Administradores:(OI)(CI)F" "SYSTEM:(OI)(CI)F" "${Usuario}:(OI)(CI)M" | Out-Null
 
     icacls $userHome /inheritance:r | Out-Null
-    icacls $userHome /grant "Administrators:(OI)(CI)F" "SYSTEM:(OI)(CI)F" "$Usuario:(OI)(CI)M" | Out-Null
+    icacls $userHome /grant "Administradores:(OI)(CI)F" "SYSTEM:(OI)(CI)F" "${Usuario}:(OI)(CI)M" | Out-Null
 }
 
 function Actualizar-EstructuraGrupoUsuario {
@@ -86,13 +87,15 @@ function Actualizar-EstructuraGrupoUsuario {
     if (Test-Path $linkRep) {
         Remove-Item $linkRep -Force -Recurse -ErrorAction SilentlyContinue
     }
+
     if (Test-Path $linkRec) {
         Remove-Item $linkRec -Force -Recurse -ErrorAction SilentlyContinue
     }
 
     if ($NuevoGrupo -eq $Global:Grupo1) {
         cmd /c "mklink /J `"$linkRep`" `"$($Global:RepPath)`"" | Out-Null
-    } else {
+    }
+    else {
         cmd /c "mklink /J `"$linkRec`" `"$($Global:RecPath)`"" | Out-Null
     }
 }
