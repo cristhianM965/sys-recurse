@@ -83,6 +83,8 @@ function Ensure-Chocolatey {
 
     Invoke-Expression ((New-Object System.Net.WebClient).DownloadString('https://community.chocolatey.org/install.ps1'))
 
+    $env:Path += ";C:\ProgramData\chocolatey\bin"
+
     if (-not (Get-Command choco -ErrorAction SilentlyContinue)) {
         throw "No se pudo instalar Chocolatey."
     }
@@ -96,13 +98,15 @@ function Get-ChocoVersions {
     $lines = choco list --exact $PackageName --all-versions 2>$null
     $versions = @()
 
+    $escapedName = [regex]::Escape($PackageName)
+
     foreach ($line in $lines) {
-        if ($line -match "^\Q$PackageName\E\|(.+)$") {
+        if ($line -match "^${escapedName}\|(.+)$") {
             $versions += $matches[1].Trim()
         }
     }
 
-    $versions | Select-Object -Unique
+    return ($versions | Select-Object -Unique)
 }
 
 function Select-VersionFromList {
