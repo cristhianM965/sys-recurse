@@ -8,21 +8,24 @@ function Install-Nginx {
     Write-Host "Instalando Nginx $version ..."
     choco install nginx --version=$version -y --no-progress
 
-    $baseCandidates = @(
+    $candidates = @(
+        "C:\tools\nginx-*",
         "C:\tools\nginx",
         "C:\ProgramData\chocolatey\lib\nginx\tools\nginx-*",
         "C:\Program Files\nginx"
     )
 
     $nginxRoot = $null
-    foreach ($candidate in $baseCandidates) {
+
+    foreach ($candidate in $candidates) {
         $found = Get-ChildItem -Path $candidate -Directory -ErrorAction SilentlyContinue | Select-Object -First 1
         if ($found) {
             $nginxRoot = $found.FullName
             break
         }
-        if (Test-Path $candidate) {
-            $nginxRoot = $candidate
+
+        if ((Test-Path $candidate) -and (Get-Item $candidate).PSIsContainer) {
+            $nginxRoot = (Get-Item $candidate).FullName
             break
         }
     }
@@ -38,7 +41,10 @@ function Install-Nginx {
         throw "No se encontró nginx.conf en $conf"
     }
 
-    (Get-Content $conf) -replace 'listen\s+80;', "listen $port;" | Set-Content $conf
+    (Get-Content $conf) `
+        -replace 'listen\s+80;', "listen $port;" `
+        -replace '#server_tokens off;', 'server_tokens off;' |
+        Set-Content $conf
 
     Open-FirewallPort $port
 

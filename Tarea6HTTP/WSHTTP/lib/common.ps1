@@ -145,5 +145,6 @@ function Select-VersionFromList {
 function Stop-ProcessIfRunning {
     param([string]$Name)
 
-    Get-Process -Name $Name -ErrorAction SilentlyContinue | Stop-Process -Force -ErrorAction SilentlyContinue
+    Get-Process -Name $Name -ErrorAction SilentlyContinue |
+        Stop-Process -Force -ErrorAction SilentlyContinue
 }
