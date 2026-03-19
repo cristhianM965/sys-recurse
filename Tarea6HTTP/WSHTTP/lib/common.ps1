@@ -90,19 +90,28 @@ function Ensure-Chocolatey {
     }
 }
 
-function Get-ChocoVersions {
+ffunction Get-ChocoVersions {
     param([string]$PackageName)
 
     Ensure-Chocolatey
 
-    $lines = choco list --exact $PackageName --all-versions 2>$null
     $versions = @()
 
-    $escapedName = [regex]::Escape($PackageName)
+    $lines = choco search $PackageName --exact --all-versions -r 2>$null
 
     foreach ($line in $lines) {
-        if ($line -match "^${escapedName}\|(.+)$") {
+        if ($line -match '^\s*[^|]+\|(.+?)\s*$') {
             $versions += $matches[1].Trim()
+        }
+    }
+
+    if (-not $versions -or $versions.Count -eq 0) {
+        $lines = choco info $PackageName --all-versions -r 2>$null
+
+        foreach ($line in $lines) {
+            if ($line -match '^\s*[^|]+\|(.+?)\s*$') {
+                $versions += $matches[1].Trim()
+            }
         }
     }
 
