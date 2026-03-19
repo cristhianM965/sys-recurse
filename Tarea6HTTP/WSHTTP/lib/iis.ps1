@@ -1,5 +1,3 @@
-Import-Module WebAdministration
-
 function Install-IIS {
 
     $port = Read-Number "Puerto IIS"
@@ -11,16 +9,14 @@ function Install-IIS {
 
     Write-Host "Instalando IIS..."
 
-    Enable-WindowsOptionalFeature `
-        -Online `
-        -FeatureName IIS-WebServerRole `
-        -All `
-        -NoRestart
+    Install-WindowsFeature -Name Web-Server -IncludeManagementTools
 
-    # Cambiar puerto
+    # 🔥 IMPORTAR DESPUÉS DE INSTALAR
+    Import-Module WebAdministration
+
+    # Cambiar puerto (forma segura)
     Set-WebBinding `
         -Name "Default Web Site" `
-        -BindingInformation "*:${port}:" `
         -PropertyName Port `
         -Value $port
 
@@ -32,7 +28,6 @@ function Install-IIS {
         -AtElement @{name='X-Powered-By'} `
         -ErrorAction SilentlyContinue
 
-    # Firewall
     Open-FirewallPort $port
 
     Restart-Service W3SVC
