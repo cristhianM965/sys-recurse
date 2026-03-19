@@ -90,7 +90,7 @@ function Ensure-Chocolatey {
     }
 }
 
-ffunction Get-ChocoVersions {
+function Get-ChocoVersions {
     param([string]$PackageName)
 
     Ensure-Chocolatey
