@@ -20,7 +20,7 @@ function Install-IIS {
     # Cambiar puerto
     Set-WebBinding `
         -Name "Default Web Site" `
-        -BindingInformation "*:$port:" `
+        -BindingInformation "*:${port}:" `
         -PropertyName Port `
         -Value $port
 
