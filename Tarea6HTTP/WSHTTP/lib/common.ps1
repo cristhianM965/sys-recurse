@@ -1,38 +1,136 @@
 function Read-Number {
-    param($msg)
+    param([string]$Message)
 
     while ($true) {
-        $val = Read-Host $msg
-        if ($val -match '^\d+$') { return [int]$val }
-        Write-Host "Entrada inválida"
+        $value = Read-Host $Message
+        if ($value -match '^\d+$') {
+            return [int]$value
+        }
+        Write-Host "Entrada inválida."
+    }
+}
+
+function Read-Port {
+    while ($true) {
+        $port = Read-Number "Puerto"
+        if ($port -lt 1024 -or $port -gt 65535) {
+            Write-Host "Usa un puerto entre 1024 y 65535."
+            continue
+        }
+
+        if ($port -in 21,22,23,25,53,67,68,69,80,110,123,135,137,138,139,143,389,443,445,587,993,995,1433,1521,3306,3389,5432) {
+            Write-Host "Puerto reservado, elige otro."
+            continue
+        }
+
+        if (-not (Test-PortFree $port)) {
+            Write-Host "Puerto ocupado."
+            continue
+        }
+
+        return $port
     }
 }
 
 function Test-PortFree {
-    param($port)
-    return -not (Test-NetConnection -ComputerName localhost -Port $port -WarningAction SilentlyContinue).TcpTestSucceeded
+    param([int]$Port)
+
+    $conn = Test-NetConnection -ComputerName localhost -Port $Port -WarningAction SilentlyContinue
+    return (-not $conn.TcpTestSucceeded)
 }
 
 function Open-FirewallPort {
-    param($port)
+    param([int]$Port)
 
     New-NetFirewallRule `
-        -DisplayName "HTTP-$port" `
+        -DisplayName "HTTP-$Port" `
         -Direction Inbound `
         -Protocol TCP `
-        -LocalPort $port `
+        -LocalPort $Port `
         -Action Allow `
-        -ErrorAction SilentlyContinue
+        -ErrorAction SilentlyContinue | Out-Null
+}
+
+function Remove-FirewallPort {
+    param([int]$Port)
+
+    Get-NetFirewallRule -DisplayName "HTTP-$Port" -ErrorAction SilentlyContinue |
+        Remove-NetFirewallRule -ErrorAction SilentlyContinue
 }
 
 function Validate-HTTP {
-    param($port)
+    param([int]$Port)
 
-    Write-Host "Validación:"
+    Write-Host "`nValidación sugerida:"
+    Write-Host "curl -I http://localhost:$Port`n"
+
     try {
-        Invoke-WebRequest "http://localhost:$port" -UseBasicParsing | Out-Null
-        Write-Host "Servidor activo en puerto $port"
+        curl.exe -I "http://localhost:$Port"
     } catch {
-        Write-Host "Error al validar"
+        Write-Host "No se pudo validar el puerto $Port"
     }
+}
+
+function Ensure-Chocolatey {
+    if (Get-Command choco -ErrorAction SilentlyContinue) {
+        return
+    }
+
+    Write-Host "Chocolatey no está instalado. Instalando Chocolatey..."
+
+    Set-ExecutionPolicy Bypass -Scope Process -Force
+    [System.Net.ServicePointManager]::SecurityProtocol = [System.Net.SecurityProtocolType]::Tls12
+
+    Invoke-Expression ((New-Object System.Net.WebClient).DownloadString('https://community.chocolatey.org/install.ps1'))
+
+    if (-not (Get-Command choco -ErrorAction SilentlyContinue)) {
+        throw "No se pudo instalar Chocolatey."
+    }
+}
+
+function Get-ChocoVersions {
+    param([string]$PackageName)
+
+    Ensure-Chocolatey
+
+    $lines = choco list --exact $PackageName --all-versions 2>$null
+    $versions = @()
+
+    foreach ($line in $lines) {
+        if ($line -match "^\Q$PackageName\E\|(.+)$") {
+            $versions += $matches[1].Trim()
+        }
+    }
+
+    $versions | Select-Object -Unique
+}
+
+function Select-VersionFromList {
+    param(
+        [string]$ServiceName,
+        [string[]]$Versions
+    )
+
+    if (-not $Versions -or $Versions.Count -eq 0) {
+        throw "No se encontraron versiones para $ServiceName."
+    }
+
+    Write-Host "`nVersiones disponibles para $ServiceName:"
+    for ($i = 0; $i -lt $Versions.Count; $i++) {
+        Write-Host "[$($i+1)] $($Versions[$i])"
+    }
+
+    while ($true) {
+        $opt = Read-Number "Elige una versión"
+        if ($opt -ge 1 -and $opt -le $Versions.Count) {
+            return $Versions[$opt - 1]
+        }
+        Write-Host "Opción inválida."
+    }
+}
+
+function Stop-ProcessIfRunning {
+    param([string]$Name)
+
+    Get-Process -Name $Name -ErrorAction SilentlyContinue | Stop-Process -Force -ErrorAction SilentlyContinue
 }

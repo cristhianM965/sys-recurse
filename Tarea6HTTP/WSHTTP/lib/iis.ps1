@@ -34,3 +34,9 @@ function Install-IIS {
 
     Validate-HTTP $port
 }
+
+function Uninstall-IIS {
+    Write-Host "Desinstalando IIS..."
+    Uninstall-WindowsFeature -Name Web-Server -ErrorAction SilentlyContinue | Out-Null
+    Write-Host "IIS desinstalado."
+}
