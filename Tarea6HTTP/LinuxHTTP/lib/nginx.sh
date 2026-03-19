@@ -19,6 +19,11 @@ linux_install_nginx() {
   linux_harden_nginx
   linux_restrict_web_permissions "www-data" "/var/www"
   linux_prepare_webroot "/var/www/nginx" "www-data" "www-data"
+  if [[ -f /var/www/html/index.html ]]; then
+  cp -f /var/www/html/index.html /var/www/apache2/index.html
+fi
+chown -R www-data:www-data /var/www/apache2
+chmod -R 755 /var/www/apache2
   linux_configure_firewall "$port"
 
   nginx -t
