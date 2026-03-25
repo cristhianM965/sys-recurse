@@ -1,6 +1,11 @@
 #!/usr/bin/env bash
 set -Eeuo pipefail
 
+NGINX_DEFAULT_SITE="/etc/nginx/sites-available/default"
+NGINX_MAIN_CONF="/etc/nginx/nginx.conf"
+NGINX_SECURITY_SNIPPET="/etc/nginx/snippets/custom-security-headers.conf"
+
+
 linux_install_nginx() {
   local version="$1"
   local port="$2"
