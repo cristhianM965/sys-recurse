@@ -12,6 +12,7 @@ source ./lib/tomcat.sh
 source ./lib/ftp_client.sh
 source ./lib/ssl_security.sh
 source ./lib/vsftpd.sh 
+source ./lib/utils.sh
 
 echo "=========================================="
 echo "   Despliegue de Infraestructura Segura   "
