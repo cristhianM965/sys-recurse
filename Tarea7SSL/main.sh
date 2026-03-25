@@ -49,7 +49,7 @@ if [ "$origen_opcion" -eq 1 ]; then
     echo ">> Modo seleccionado: WEB (Repositorio Oficial)"
     
     if [ "$SERVICIO" == "Nginx" ]; then
-        linux_nginx_flow
+        # linux_nginx_flow
     elif [ "$SERVICIO" == "Apache" ]; then
         # linux_apache_flow # Descomentar cuando tu módulo de Apache esté listo
         echo "Llamando a flujo de Apache..."
