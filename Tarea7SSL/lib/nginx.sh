@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-set -Eeuo pipefail
+
 
 NGINX_DEFAULT_SITE="/etc/nginx/sites-available/default"
 NGINX_MAIN_CONF="/etc/nginx/nginx.conf"
