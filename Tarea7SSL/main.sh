@@ -50,11 +50,12 @@ if [ "$origen_opcion" -eq 1 ]; then
     
     if [ "$SERVICIO" == "Nginx" ]; then
         # linux_nginx_flow
+        echo "Saltando instalacion de Nginx, yendo a seguridad..."
     elif [ "$SERVICIO" == "Apache" ]; then
-        # linux_apache_flow # Descomentar cuando tu módulo de Apache esté listo
+        # linux_apache_flow
         echo "Llamando a flujo de Apache..."
     elif [ "$SERVICIO" == "Tomcat" ]; then
-        # linux_tomcat_flow # Descomentar cuando tu módulo de Tomcat esté listo
+        # linux_tomcat_flow
         echo "Llamando a flujo de Tomcat..."
     elif [ "$SERVICIO" == "vsftpd" ]; then
         linux_vsftpd_flow
