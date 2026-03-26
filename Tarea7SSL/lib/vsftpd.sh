@@ -29,5 +29,36 @@ linux_vsftpd_flow() {
     systemctl enable vsftpd
     systemctl restart vsftpd
     
-    echo "Servicio vsftpd instalado."
+    echo "Servicio vsftpd instalado y configurado."
+
+    # ================================================================
+    # NUEVO: CREACIÓN AUTOMÁTICA DE LA ESTRUCTURA DEL REPOSITORIO FTP
+    # ================================================================
+    echo "Construyendo estructura del repositorio FTP automatizado..."
+    local ftp_home="/home/cris2204"
+
+    # 1. Crear las carpetas de la rúbrica
+    mkdir -p "$ftp_home/Linux/Apache"
+    mkdir -p "$ftp_home/Linux/Nginx"
+    mkdir -p "$ftp_home/Windows/Tomcat"
+
+    # 2. Llenar la carpeta de Apache
+    echo "Descargando instalador de Apache y generando Hash..."
+    cd "$ftp_home/Linux/Apache"
+    rm -f * # Limpiar por si hay basura
+    apt-get download apache2 > /dev/null 2>&1
+    for f in *.deb; do sha256sum "$f" > "$f.sha256"; done
+
+    # 3. Llenar la carpeta de Nginx
+    echo "Descargando instalador de Nginx y generando Hash..."
+    cd "$ftp_home/Linux/Nginx"
+    rm -f *
+    apt-get download nginx > /dev/null 2>&1
+    for f in *.deb; do sha256sum "$f" > "$f.sha256"; done
+
+    # 4. Ajustar los permisos para que el usuario FTP sea el dueño
+    chown -R cris2204:cris2204 "$ftp_home/Linux"
+    chown -R cris2204:cris2204 "$ftp_home/Windows"
+
+    echo "¡Repositorio FTP estructurado y surtido con éxito!"
 }

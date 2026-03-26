@@ -18,8 +18,7 @@ linux_ftp_download_and_verify() {
   # Listar directorio y obtener el instalador (ignorando el .sha256)
   echo "Consultando archivos disponibles en el repositorio FTP..."
   local file_name
-  file_name=$(curl -s -u "${FTP_USER}:${FTP_PASS}" "${remote_dir}" | awk '{print $9}' | grep -v '\.sha256$' | head -n 1)
-
+  file_name=$(curl -s -k --ssl-reqd -u "${FTP_USER}:${FTP_PASS}" "${remote_dir}" 
   if [[ -z "$file_name" ]]; then
     echo "ERROR: No se encontró ningún instalador en la carpeta FTP."
     return 1
