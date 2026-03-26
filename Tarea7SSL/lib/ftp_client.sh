@@ -1,15 +1,15 @@
 #!/usr/bin/env bash
 set -Eeuo pipefail
 
-# Variables de tu servidor Windows IIS FTP (Ajusta la IP y contraseñas)
-FTP_SERVER="192.168.1.100" # <-- CAMBIAR POR LA IP DE TU WINDOWS SERVER
-FTP_USER="reprobados"      # <-- USUARIO DE TU PRACTICA ANTERIOR
-FTP_PASS="12345"           # <-- CONTRASEÑA
-
 linux_ftp_download_and_verify() {
-  local servicio="$1" # Recibe: Apache, Nginx, Tomcat o vsftpd
-  local os_folder="Linux"
-  local remote_dir="ftp://${FTP_SERVER}/${os_folder}/${servicio}/"
+
+    local servicio="$1"   # Recibe el nombre del servicio
+    local FTP_SERVER="$2" # Recibe la IP que escribiste en consola
+    local FTP_USER="$3"   # Recibe el usuario que escribiste
+    local FTP_PASS="$4"   # Recibe la contraseña que escribiste
+    
+    local os_folder="Linux"
+    local remote_dir="ftp://${FTP_SERVER}/${os_folder}/${servicio}/"
   
   echo "=========================================="
   echo "Iniciando cliente FTP para: $servicio"
