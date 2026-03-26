@@ -14,23 +14,29 @@ source ./lib/ssl_security.sh
 source ./lib/vsftpd.sh 
 source ./lib/utils.sh
 
-echo "=========================================="
-echo "   Despliegue de Infraestructura Segura   "
-echo "=========================================="
-echo "Seleccione el servicio a instalar:"
-echo "1) Apache"
-echo "2) Nginx"
-echo "3) Tomcat"
-echo "4) vsftpd"
-read -p "Opción (1-4): " servicio_opcion
+while true; do
+    echo "=========================================="
+    echo "   Despliegue de Infraestructura Segura   "
+    echo "=========================================="
+    echo "Seleccione el servicio a instalar:"
+    echo "1) Apache"
+    echo "2) Nginx"
+    echo "3) Tomcat"
+    echo "4) vsftpd"
+    echo "5) 🚨 DESINSTALAR TODOS LOS SERVICIOS 🚨"  # <--- Agregas el texto aquí
+    echo "6) Salir"
+    read -p "Opción (1-6): " opcion_principal
 
-case $servicio_opcion in
-    1) SERVICIO="Apache" ;;
-    2) SERVICIO="Nginx" ;;
-    3) SERVICIO="Tomcat" ;;
-    4) SERVICIO="vsftpd" ;;
-    *) echo "Opción no válida."; exit 1 ;;
-esac
+    case $opcion_principal in
+        1) linux_apache_flow ;;
+        2) linux_nginx_flow ;;
+        3) linux_tomcat_flow ;;
+        4) linux_vsftpd_flow ;;
+        5) desinstalar_todo ;;                    # <--- Agregas la ejecución aquí
+        6) echo "Saliendo..."; exit 0 ;;
+        *) echo "Opción inválida." ;;
+    esac
+done
 
 echo "------------------------------------------"
 echo "Seleccione el origen de la instalación:"
@@ -73,8 +79,7 @@ elif [ "$origen_opcion" -eq 2 ]; then
     # Llamamos a la función y pasamos los datos como parámetros
     if linux_ftp_download_and_verify "$SERVICIO" "$input_ftp_ip" "$input_ftp_user" "$input_ftp_pass"; then
         echo "------------------------------------------"
-        echo "Instalando paquete verificado: $ARCHIVO_DESCARGADO"
-        
+
         # Instalación dinámica dependiendo del tipo de archivo
         if [[ "$ARCHIVO_DESCARGADO" == *.deb ]]; then
             export DEBIAN_FRONTEND=noninteractive

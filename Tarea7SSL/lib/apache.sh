@@ -84,22 +84,79 @@ EOF
   apache2ctl configtest
 }
 
+#!/usr/bin/env bash
+
 linux_apache_flow() {
-  local version
-  local port
+    echo "=========================================="
+    echo "🌐 INICIANDO DESPLIEGUE DE APACHE"
+    echo "=========================================="
 
-  version="$(linux_choose_version_from_apt "apache2" "Apache2")"
-  port="$(linux_read_valid_port)"
+    # FASE 1: Pedir y validar puertos
+    local PUERTO_HTTP=$(linux_read_valid_port "HTTP" "8081")
+    local PUERTO_HTTPS=$(linux_read_valid_port "HTTPS" "4443")
 
-  echo
-  echo "Resumen:"
-  echo "Servicio: Apache2"
-  echo "Versión: $version"
-  echo "Puerto:  $port"
-  echo
+    # FASE 2: Origen de la instalación
+    echo "------------------------------------------"
+    echo "Seleccione el origen de la instalación:"
+    echo "1) WEB (Repositorios Oficiales / apt)"
+    echo "2) FTP Privado (Instalador local + Hash)"
+    read -p "Origen (1-2): " origen
 
-  linux_confirm "¿Deseas continuar con la instalación?" || return 0
-  linux_install_apache "$version" "$port"
+    if [[ "$origen" == "1" ]]; then
+        echo ">> Modo seleccionado: WEB"
+        apt-get update -y > /dev/null 2>&1
+        export DEBIAN_FRONTEND=noninteractive
+        apt-get install -y apache2
+    elif [[ "$origen" == "2" ]]; then
+        echo ">> Modo seleccionado: FTP Privado"
+        read -p "Ingrese la IP o Dominio del servidor FTP: " FTP_IP
+        read -p "Ingrese el usuario FTP: " FTP_USER
+        read -s -p "Ingrese la contraseña FTP: " FTP_PASS
+        echo ""
+        
+        linux_ftp_download_and_verify "Apache" "$FTP_IP" "$FTP_USER" "$FTP_PASS"
+        if [ $? -ne 0 ]; then
+            echo "Abortando configuración de Apache por fallo en FTP."
+            return 1
+        fi
+    else
+        echo "Opción inválida."
+        return 1
+    fi
+
+    # FASE 3: Configurar Puertos y SSL (Se ejecuta siempre, sin importar el origen)
+    echo "=========================================="
+    echo "⚙️ Configurando puertos $PUERTO_HTTP y $PUERTO_HTTPS..."
+    
+    # 3.1 Cambiar puertos en configuración principal
+    sed -i "s/Listen 80/Listen $PUERTO_HTTP/" /etc/apache2/ports.conf
+    sed -i "s/Listen 443/Listen $PUERTO_HTTPS/" /etc/apache2/ports.conf
+    sed -i "s/<VirtualHost \*:80>/<VirtualHost \*:$PUERTO_HTTP>/" /etc/apache2/sites-available/000-default.conf
+    
+    # 3.2 Habilitar SSL y cambiar puerto seguro
+    echo "🔒 Generando y aplicando certificado SSL autofirmado..."
+    a2enmod ssl > /dev/null 2>&1
+    a2ensite default-ssl > /dev/null 2>&1
+    sed -i "s/<VirtualHost _default_:443>/<VirtualHost _default_:$PUERTO_HTTPS>/" /etc/apache2/sites-available/default-ssl.conf
+
+    # 3.3 Crear certificado de "Reprobados"
+    mkdir -p /etc/ssl/reprobados
+    openssl req -x509 -nodes -days 365 -newkey rsa:2048 \
+        -keyout /etc/ssl/reprobados/apache.key \
+        -out /etc/ssl/reprobados/apache.crt \
+        -subj "/C=MX/ST=Sinaloa/L=LosMochis/O=Reprobados/CN=www.reprobados.com" 2>/dev/null
+
+    # 3.4 Inyectar certificado en Apache
+    sed -i "s|SSLCertificateFile.*|SSLCertificateFile /etc/ssl/reprobados/apache.crt|" /etc/apache2/sites-available/default-ssl.conf
+    sed -i "s|SSLCertificateKeyFile.*|SSLCertificateKeyFile /etc/ssl/reprobados/apache.key|" /etc/apache2/sites-available/default-ssl.conf
+
+    # Reiniciar para aplicar todo
+    systemctl restart apache2
+    
+    echo "✅ ¡Apache desplegado con éxito!"
+    echo "🌍 HTTP  disponible en: http://localhost:$PUERTO_HTTP"
+    echo "🔒 HTTPS disponible en: https://localhost:$PUERTO_HTTPS"
+    echo "=========================================="
 }
 
 linux_uninstall_apache() {

@@ -11,11 +11,30 @@ linux_choose_version_from_apt() {
 }
 
 linux_read_valid_port() {
-    local port
-    # Mostramos el prompt hacia stderr para que no se mezcle con la captura de la variable
-    read -p "Ingrese el puerto HTTP (ej. 80): " port >&2
-    # Si el usuario da Enter vacío, usamos el 80 por defecto
-    echo "${port:-80}"
+    local protocolo="$1"      # Ej: HTTP, HTTPS, Tomcat
+    local puerto_default="$2" # Ej: 80, 443, 8080
+    local input_port
+    local puerto_final
+
+    while true; do
+        # 1. Mostramos el prompt hacia stderr (>&2)
+        read -p "Ingrese el puerto $protocolo a usar (Ej. $puerto_default): " input_port >&2
+        
+        # 2. Si da Enter vacío, usamos el default
+        puerto_final=${input_port:-$puerto_default}
+
+        # 3. Validar si el puerto ya está en uso en el sistema
+        # Usamos grep -qw para buscar la coincidencia exacta del puerto
+        if ss -tuln | grep -qw ":$puerto_final"; then
+            echo "⚠️  ERROR: El puerto $puerto_final ya está ocupado por otro servicio. Por favor, elige otro." >&2
+        else
+            echo "✅ Puerto $protocolo ($puerto_final) disponible y reservado." >&2
+            
+            # 4. Imprimimos el puerto final a stdout para que la variable lo capture
+            echo "$puerto_final"
+            break # Salimos del bucle
+        fi
+    done
 }
 
 linux_confirm() {
@@ -62,4 +81,24 @@ linux_validate_service_active() {
 linux_print_http_validation() {
     local port="$1"
     echo "Puede validar el servicio usando: curl -I http://localhost:$port"
+}
+
+desinstalar_todo() {
+    echo "=========================================="
+    echo "🧹 INICIANDO PROTOCOLO DE LIMPIEZA TOTAL..."
+    echo "=========================================="
+    
+    # 1. Detener servicios si están corriendo
+    systemctl stop apache2 nginx tomcat9 vsftpd > /dev/null 2>&1
+    
+    # 2. Purgar paquetes (Elimina el software y configuraciones base)
+    export DEBIAN_FRONTEND=noninteractive
+    apt-get purge -y apache2* nginx* tomcat* vsftpd* > /dev/null 2>&1
+    apt-get autoremove -y > /dev/null 2>&1
+    
+    # 3. Eliminar carpetas residuales
+    rm -rf /etc/apache2 /etc/nginx /var/lib/tomcat* /etc/vsftpd* /etc/ssl/reprobados* /tmp/*.deb /tmp/*.sha256
+    
+    echo "✅ Sistema limpio. Puertos liberados. ¡Listo para una instalación fresca!"
+    echo "=========================================="
 }
