@@ -285,9 +285,15 @@ configure_tomcat_custom_ports() {
 
   cp "$server_xml" "$server_xml.bak.$(date +%s)"
 
+  # Elimina el conector HTTP por defecto y cualquier conector SSL previo
   sed -i '/port="8080"/d' "$server_xml"
   sed -i '/SSLEnabled="true"/d' "$server_xml"
+  sed -i '/certificateKeystoreFile=/d' "$server_xml"
+  sed -i '/certificateKeystorePassword=/d' "$server_xml"
+  sed -i '/keystoreFile=.*reprobados\.p12/d' "$server_xml"
+  sed -i '/keystorePass=/d' "$server_xml"
 
+  # Inserta conector HTTP personalizado
   sed -i "/<Service name=\"Catalina\">/a\\
     <Connector port=\"$http_port\" protocol=\"HTTP/1.1\" connectionTimeout=\"20000\" redirectPort=\"${https_port:-8443}\" />" "$server_xml"
 
@@ -295,8 +301,9 @@ configure_tomcat_custom_ports() {
     [[ -n "$https_port" ]] || die "Falta puerto HTTPS para Tomcat"
     ensure_certificate_exists
 
+    # Inserta conector HTTPS correcto para PKCS12
     sed -i "/<Service name=\"Catalina\">/a\\
-    <Connector protocol=\"org.apache.coyote.http11.Http11NioProtocol\" port=\"$https_port\" maxThreads=\"200\" SSLEnabled=\"true\" scheme=\"https\" secure=\"true\" keystoreType=\"PKCS12\" certificateKeystoreFile=\"$CERT_P12\" certificateKeystorePassword=\"$TOMCAT_P12_PASS\" sslProtocol=\"TLS\" />" "$server_xml"
+    <Connector protocol=\"org.apache.coyote.http11.Http11NioProtocol\" port=\"$https_port\" maxThreads=\"200\" SSLEnabled=\"true\" scheme=\"https\" secure=\"true\" keystoreType=\"PKCS12\" keystoreFile=\"$CERT_P12\" keystorePass=\"$TOMCAT_P12_PASS\" sslProtocol=\"TLS\" />" "$server_xml"
 
     if [[ -n "$webxml" ]] && ! grep -q "HttpHeaderSecurityFilter" "$webxml"; then
       cp "$webxml" "$webxml.bak.$(date +%s)"
