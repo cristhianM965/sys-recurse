@@ -101,32 +101,14 @@ function Ensure-Java {
 }
 
 function Get-TomcatBase {
-    $svcNames = @("Tomcat10", "Apache Tomcat 10.1 Tomcat10", "tomcat")
-
-    foreach ($name in $svcNames) {
-        $svc = Get-CimInstance Win32_Service -ErrorAction SilentlyContinue | Where-Object {
-            $_.Name -eq $name -or $_.DisplayName -eq $name
-        } | Select-Object -First 1
-
-        if ($svc) {
-            $path = $svc.PathName
-
-            $serviceExe = [regex]::Match($path, '"([^"]*tomcat\d*\.exe)"').Groups[1].Value
-            if (-not $serviceExe) {
-                $serviceExe = [regex]::Match($path, '"([^"]*tomcat.*?\.exe)"').Groups[1].Value
-            }
-
-            if ($serviceExe -and (Test-Path $serviceExe)) {
-                return Split-Path (Split-Path $serviceExe -Parent) -Parent
-            }
-        }
-    }
-
     $possible = @(
         "C:\Program Files\Apache Software Foundation\Tomcat 10.1",
         "C:\Program Files\Apache Software Foundation\Tomcat 10.0",
         "C:\Tomcat",
-        "$env:ProgramFiles\Apache Software Foundation\Tomcat 10.1"
+        "$env:ProgramFiles\Apache Software Foundation\Tomcat 10.1",
+        "$env:ProgramFiles\Apache Software Foundation\Tomcat 10.0",
+        "$env:APPDATA\Apache Tomcat 10.1",
+        "$env:APPDATA\Tomcat"
     )
 
     $found = $possible | Where-Object { Test-Path $_ } | Select-Object -First 1
@@ -134,11 +116,17 @@ function Get-TomcatBase {
         return $found
     }
 
-    $serviceExe = Get-ChildItem -Path "C:\" -Filter "Tomcat10.exe" -Recurse -ErrorAction SilentlyContinue |
+    $foundExe = Get-ChildItem -Path "C:\" -Filter "Tomcat10.exe" -Recurse -ErrorAction SilentlyContinue |
         Select-Object -First 1 -ExpandProperty FullName
 
-    if ($serviceExe) {
-        return Split-Path (Split-Path $serviceExe -Parent) -Parent
+    if (-not $foundExe) {
+        $foundExe = Get-ChildItem -Path "C:\" -Filter "service.bat" -Recurse -ErrorAction SilentlyContinue |
+            Where-Object { $_.FullName -match "Tomcat" } |
+            Select-Object -First 1 -ExpandProperty FullName
+    }
+
+    if ($foundExe) {
+        return Split-Path (Split-Path $foundExe -Parent) -Parent
     }
 
     throw "No se encontró la carpeta base de Tomcat."
@@ -168,11 +156,52 @@ function Install-TomcatWeb {
         throw "No se encontró server.xml en $serverXml"
     }
 
+    $binPath = Join-Path $tomcatBase "bin"
+
+    $serviceExeCandidates = @(
+        (Join-Path $binPath "Tomcat10.exe"),
+        (Join-Path $binPath "Tomcat10w.exe"),
+        (Join-Path $binPath "tomcat10.exe"),
+        (Join-Path $binPath "tomcat10w.exe")
+    )
+
+    $serviceExe = $serviceExeCandidates | Where-Object { Test-Path $_ } | Select-Object -First 1
+
+    $service = Get-Service -Name "Tomcat10" -ErrorAction SilentlyContinue
+    if (-not $service) {
+        $service = Get-Service -Name "Tomcat" -ErrorAction SilentlyContinue
+    }
+
+    if (-not $service) {
+        Write-Host "No existe servicio de Tomcat. Intentando crearlo..." -ForegroundColor Yellow
+
+        if ($serviceExe) {
+            & $serviceExe //IS//Tomcat10
+            Start-Sleep -Seconds 3
+        }
+        else {
+            $serviceBat = Join-Path $binPath "service.bat"
+            if (Test-Path $serviceBat) {
+                & cmd /c "`"$serviceBat`" install Tomcat10"
+                Start-Sleep -Seconds 3
+            }
+            else {
+                throw "No se encontró ejecutable ni service.bat para crear el servicio de Tomcat."
+            }
+        }
+
+        $service = Get-Service -Name "Tomcat10" -ErrorAction SilentlyContinue
+        if (-not $service) {
+            $service = Get-Service -Name "Tomcat" -ErrorAction SilentlyContinue
+        }
+
+        if (-not $service) {
+            throw "Tomcat fue instalado, pero no se pudo crear el servicio."
+        }
+    }
+
     $xml = Get-Content $serverXml -Raw
-
     $xml = $xml -replace 'port="8080"', "port=""$Port"""
-    $xml = $xml -replace 'redirectPort="8443"', 'redirectPort="8443"'
-
     Set-Content -Path $serverXml -Value $xml -Encoding UTF8
 
     $rootIndex = Join-Path $tomcatBase "webapps\ROOT\index.jsp"
@@ -180,13 +209,15 @@ function Install-TomcatWeb {
         Set-Content -Path $rootIndex -Value "<html><body><h1>Tomcat Windows - reprobados.com</h1></body></html>" -Encoding UTF8
     }
 
-    $service = Get-Service -Name "Tomcat*" -ErrorAction SilentlyContinue | Select-Object -First 1
-    if ($service) {
+    if ($service.Status -eq 'Running') {
         Restart-Service -Name $service.Name -Force
     }
     else {
-        throw "No se encontró el servicio de Tomcat."
+        Start-Service -Name $service.Name
     }
+
+    Start-Sleep -Seconds 3
 
     Write-Host "Tomcat instalado y ejecutándose en puerto $Port" -ForegroundColor Green
 }
+
