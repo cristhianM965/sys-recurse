@@ -124,40 +124,48 @@ linux_apache_flow() {
         return 1
     fi
 
-    # FASE 3: Configurar Puertos y SSL (Se ejecuta siempre, sin importar el origen)
+    # FASE 3: Configurar Puertos y SSL (Idempotente)
     echo "=========================================="
     echo "⚙️ Configurando puertos $PUERTO_HTTP y $PUERTO_HTTPS..."
     
-    # 3.1 Cambiar puertos en configuración principal
-    sed -i "s/Listen 80/Listen $PUERTO_HTTP/" /etc/apache2/ports.conf
-    sed -i "s/Listen 443/Listen $PUERTO_HTTPS/" /etc/apache2/ports.conf
-    sed -i "s/<VirtualHost \*:80>/<VirtualHost \*:$PUERTO_HTTP>/" /etc/apache2/sites-available/000-default.conf
+    # 3.1 Recrear ports.conf desde cero para evitar duplicidad o fallos de sed
+    cat <<EOF > /etc/apache2/ports.conf
+Listen $PUERTO_HTTP
+<IfModule ssl_module>
+    Listen $PUERTO_HTTPS
+</IfModule>
+<IfModule mod_gnutls.c>
+    Listen $PUERTO_HTTPS
+</IfModule>
+EOF
     
-    # 3.2 Habilitar SSL y cambiar puerto seguro
+    # 3.2 Modificar VirtualHost usando Regex sin importar qué puerto tenía antes
+    sed -i -E "s/<VirtualHost \*:.*>/<VirtualHost \*:$PUERTO_HTTP>/" /etc/apache2/sites-available/000-default.conf
+    
+    # 3.3 Habilitar SSL y cambiar puerto seguro
     echo "🔒 Generando y aplicando certificado SSL autofirmado..."
     a2enmod ssl > /dev/null 2>&1
     a2ensite default-ssl > /dev/null 2>&1
-    sed -i "s/<VirtualHost _default_:443>/<VirtualHost _default_:$PUERTO_HTTPS>/" /etc/apache2/sites-available/default-ssl.conf
+    sed -i -E "s/<VirtualHost _default_:.*>/<VirtualHost _default_:$PUERTO_HTTPS>/" /etc/apache2/sites-available/default-ssl.conf
 
-    # 3.3 Crear certificado de "Reprobados"
+    # 3.4 Crear certificado de "Reprobados"
     mkdir -p /etc/ssl/reprobados
     openssl req -x509 -nodes -days 365 -newkey rsa:2048 \
         -keyout /etc/ssl/reprobados/apache.key \
         -out /etc/ssl/reprobados/apache.crt \
         -subj "/C=MX/ST=Sinaloa/L=LosMochis/O=Reprobados/CN=www.reprobados.com" 2>/dev/null
 
-    # 3.4 Inyectar certificado en Apache
+    # 3.5 Inyectar certificado
     sed -i "s|SSLCertificateFile.*|SSLCertificateFile /etc/ssl/reprobados/apache.crt|" /etc/apache2/sites-available/default-ssl.conf
     sed -i "s|SSLCertificateKeyFile.*|SSLCertificateKeyFile /etc/ssl/reprobados/apache.key|" /etc/apache2/sites-available/default-ssl.conf
 
-    # Reiniciar para aplicar todo
+    # Reinicio final
     systemctl restart apache2
     
     echo "✅ ¡Apache desplegado con éxito!"
     echo "🌍 HTTP  disponible en: http://localhost:$PUERTO_HTTP"
     echo "🔒 HTTPS disponible en: https://localhost:$PUERTO_HTTPS"
     echo "=========================================="
-}
 
 linux_uninstall_apache() {
   echo "Desinstalando Apache2..."

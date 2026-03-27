@@ -11,28 +11,22 @@ linux_choose_version_from_apt() {
 }
 
 linux_read_valid_port() {
-    local protocolo="$1"      # Ej: HTTP, HTTPS, Tomcat
-    local puerto_default="$2" # Ej: 80, 443, 8080
+    local protocolo="$1"
+    local puerto_default="$2"
     local input_port
     local puerto_final
 
     while true; do
-        # 1. Mostramos el prompt hacia stderr (>&2)
         read -p "Ingrese el puerto $protocolo a usar (Ej. $puerto_default): " input_port >&2
-        
-        # 2. Si da Enter vacío, usamos el default
         puerto_final=${input_port:-$puerto_default}
 
-        # 3. Validar si el puerto ya está en uso en el sistema
-        # Usamos grep -qw para buscar la coincidencia exacta del puerto
-        if ss -tuln | grep -qw ":$puerto_final"; then
-            echo "⚠️  ERROR: El puerto $puerto_final ya está ocupado por otro servicio. Por favor, elige otro." >&2
+        # La etiqueta \b asegura que busque exactamente el puerto (80 no coincidirá con 8080)
+        if ss -tuln | grep -E -q ":$puerto_final\b"; then
+            echo "⚠️ ERROR: El puerto $puerto_final ya está ocupado en el sistema." >&2
         else
             echo "✅ Puerto $protocolo ($puerto_final) disponible y reservado." >&2
-            
-            # 4. Imprimimos el puerto final a stdout para que la variable lo capture
             echo "$puerto_final"
-            break # Salimos del bucle
+            break
         fi
     done
 }
@@ -83,22 +77,57 @@ linux_print_http_validation() {
     echo "Puede validar el servicio usando: curl -I http://localhost:$port"
 }
 
-desinstalar_todo() {
+menu_desinstalar() {
     echo "=========================================="
-    echo "🧹 INICIANDO PROTOCOLO DE LIMPIEZA TOTAL..."
+    echo "🧹 MENÚ DE DESINSTALACIÓN SELECTIVA"
     echo "=========================================="
-    
-    # 1. Detener servicios si están corriendo
-    systemctl stop apache2 nginx tomcat9 vsftpd > /dev/null 2>&1
-    
-    # 2. Purgar paquetes (Elimina el software y configuraciones base)
+    echo "1) Apache"
+    echo "2) Nginx"
+    echo "3) Tomcat"
+    echo "4) vsftpd"
+    echo "5) TODOS los servicios"
+    echo "6) Cancelar"
+    read -p "Seleccione qué desea desinstalar (1-6): " opt_del
+
     export DEBIAN_FRONTEND=noninteractive
-    apt-get purge -y apache2* nginx* tomcat* vsftpd* > /dev/null 2>&1
-    apt-get autoremove -y > /dev/null 2>&1
-    
-    # 3. Eliminar carpetas residuales
-    rm -rf /etc/apache2 /etc/nginx /var/lib/tomcat* /etc/vsftpd* /etc/ssl/reprobados* /tmp/*.deb /tmp/*.sha256
-    
-    echo "✅ Sistema limpio. Puertos liberados. ¡Listo para una instalación fresca!"
-    echo "=========================================="
+    case $opt_del in
+        1)
+            sudo systemctl stop apache2 2>/dev/null || true
+            sudo apt-get purge -y apache2* >/dev/null 2>&1
+            sudo rm -rf /etc/apache2
+            echo "✅ Apache desinstalado correctamente."
+            ;;
+        2)
+            sudo systemctl stop nginx 2>/dev/null || true
+            sudo apt-get purge -y nginx* >/dev/null 2>&1
+            sudo rm -rf /etc/nginx
+            echo "✅ Nginx desinstalado correctamente."
+            ;;
+        3)
+            sudo systemctl stop tomcat9 2>/dev/null || true
+            sudo apt-get purge -y tomcat9* >/dev/null 2>&1
+            sudo rm -rf /var/lib/tomcat9 /etc/tomcat9
+            echo "✅ Tomcat desinstalado correctamente."
+            ;;
+        4)
+            sudo systemctl stop vsftpd 2>/dev/null || true
+            sudo apt-get purge -y vsftpd* >/dev/null 2>&1
+            sudo rm -rf /etc/vsftpd.conf*
+            echo "✅ vsftpd desinstalado correctamente."
+            ;;
+        5)
+            sudo systemctl stop apache2 nginx tomcat9 vsftpd 2>/dev/null || true
+            sudo apt-get purge -y apache2* nginx* tomcat9* vsftpd* >/dev/null 2>&1
+            sudo rm -rf /etc/apache2 /etc/nginx /var/lib/tomcat9 /etc/tomcat9 /etc/vsftpd.conf* /etc/ssl/reprobados*
+            echo "✅ Todos los servicios han sido desinstalados."
+            ;;
+        6) 
+            echo "Operación cancelada."
+            return 0 
+            ;;
+        *) 
+            echo "Opción inválida." 
+            ;;
+    esac
+    sudo apt-get autoremove -y >/dev/null 2>&1
 }
