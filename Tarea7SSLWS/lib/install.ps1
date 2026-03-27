@@ -146,3 +146,43 @@ function Install-ApacheWeb {
 
     Write-Host "Apache instalado y ejecutándose en puerto $Port" -ForegroundColor Green
 }
+
+function Ensure-OpenSSL {
+    Write-Host "Verificando OpenSSL..." -ForegroundColor Cyan
+
+    if (Test-Path $OPENSSL_EXE) {
+        Write-Host "OpenSSL ya está instalado." -ForegroundColor Green
+        return
+    }
+
+    Ensure-Chocolatey
+
+    Write-Host "OpenSSL no encontrado. Instalando OpenSSL.Light..." -ForegroundColor Yellow
+
+    choco install openssl.light -y --no-progress
+
+    if ($LASTEXITCODE -ne 0) {
+        throw "No se pudo instalar OpenSSL con Chocolatey."
+    }
+
+    $possibleOpenSSL = @(
+        "C:\Program Files\OpenSSL-Win64\bin\openssl.exe",
+        "C:\Program Files\OpenSSL-Win32\bin\openssl.exe",
+        "C:\tools\OpenSSL-Win64\bin\openssl.exe",
+        "C:\ProgramData\chocolatey\bin\openssl.exe"
+    )
+
+    $found = $possibleOpenSSL | Where-Object { Test-Path $_ } | Select-Object -First 1
+
+    if (-not $found) {
+        $found = Get-ChildItem -Path "C:\" -Filter "openssl.exe" -Recurse -ErrorAction SilentlyContinue |
+            Select-Object -First 1 -ExpandProperty FullName
+    }
+
+    if (-not $found) {
+        throw "OpenSSL fue instalado, pero no se encontró openssl.exe"
+    }
+
+    $script:OPENSSL_EXE = $found
+    Write-Host "OpenSSL detectado en: $script:OPENSSL_EXE" -ForegroundColor Green
+}

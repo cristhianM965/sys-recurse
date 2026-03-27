@@ -34,7 +34,11 @@ function Ensure-Apache-Cert {
     }
 
     if (-not (Test-Path $OPENSSL_EXE)) {
-        throw "No se encontró openssl en: $OPENSSL_EXE"
+    Ensure-OpenSSL
+    }
+
+    if (-not (Test-Path $OPENSSL_EXE)) {
+    throw "No se encontró openssl en: $OPENSSL_EXE"
     }
 
     Write-Host "Generando certificado autofirmado para Apache..." -ForegroundColor Cyan

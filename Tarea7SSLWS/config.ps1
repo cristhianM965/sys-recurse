@@ -13,4 +13,5 @@ $APACHE_WEB_URL = "https://www.apachelounge.com/download/VS17/binaries/httpd-2.4
 $APACHE_CERT_DIR = "C:\Tarea7\certs"
 $APACHE_CERT_CRT = "$APACHE_CERT_DIR\reprobados.crt"
 $APACHE_CERT_KEY = "$APACHE_CERT_DIR\reprobados.key"
+
 $OPENSSL_EXE = "C:\Program Files\OpenSSL-Win64\bin\openssl.exe"
