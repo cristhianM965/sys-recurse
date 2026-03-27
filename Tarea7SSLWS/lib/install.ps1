@@ -101,51 +101,62 @@ function Ensure-Java {
 }
 
 function Get-TomcatBase {
-    $svc = Get-CimInstance Win32_Service -ErrorAction SilentlyContinue |
-        Where-Object { $_.Name -like "*tomcat*" -or $_.DisplayName -like "*tomcat*" } |
-        Select-Object -First 1
+    $candidates = @()
 
-    if ($svc) {
+    # 1. Intentar obtener ruta desde servicios registrados
+    $services = Get-CimInstance Win32_Service -ErrorAction SilentlyContinue |
+        Where-Object { $_.Name -like "*tomcat*" -or $_.DisplayName -like "*tomcat*" }
+
+    foreach ($svc in $services) {
         $path = $svc.PathName
+
         $serviceExe = [regex]::Match($path, '"([^"]*tomcat.*?\.exe)"').Groups[1].Value
+        if (-not $serviceExe) {
+            $serviceExe = [regex]::Match($path, '([A-Za-z]:\\[^"]*tomcat.*?\.exe)').Groups[1].Value
+        }
 
         if ($serviceExe -and (Test-Path $serviceExe)) {
-            return Split-Path (Split-Path $serviceExe -Parent) -Parent
+            $base = Split-Path (Split-Path $serviceExe -Parent) -Parent
+            $candidates += $base
         }
     }
 
-    $possible = @(
+    # 2. Rutas comunes reales
+    $candidates += @(
         "C:\Program Files\Apache Software Foundation\Tomcat 10.1",
         "C:\Program Files\Apache Software Foundation\Tomcat 10.0",
         "C:\Tomcat",
         "$env:ProgramFiles\Apache Software Foundation\Tomcat 10.1",
-        "C:\ProgramData\chocolatey\lib\tomcat",
-        "C:\ProgramData\chocolatey\lib\tomcat.install"
+        "$env:ProgramFiles\Apache Software Foundation\Tomcat 10.0"
     )
 
-    $found = $possible | Where-Object { Test-Path $_ } | Select-Object -First 1
-    if ($found) {
-        return $found
-    }
-
-    $serviceExe = Get-ChildItem -Path "C:\" -Filter "*tomcat*.exe" -Recurse -ErrorAction SilentlyContinue |
-        Select-Object -First 1 -ExpandProperty FullName
-
-    if ($serviceExe) {
-        return Split-Path (Split-Path $serviceExe -Parent) -Parent
-    }
-
-    $folder = Get-ChildItem -Path "C:\ProgramData\chocolatey\lib" -Directory -ErrorAction SilentlyContinue |
-        Where-Object { $_.Name -like "*tomcat*" } |
+    # 3. Buscar carpetas que realmente tengan server.xml
+    $serverXmlFound = Get-ChildItem -Path "C:\" -Filter "server.xml" -Recurse -ErrorAction SilentlyContinue |
+        Where-Object { $_.FullName -match '\\conf\\server\.xml$' } |
         Select-Object -First 1
 
-    if ($folder) {
-        return $folder.FullName
+    if ($serverXmlFound) {
+        $realBase = Split-Path (Split-Path $serverXmlFound.FullName -Parent) -Parent
+        $candidates += $realBase
     }
 
-    throw "No se encontró la carpeta base de Tomcat."
-}
+    # 4. Validar candidatos
+    $validBase = $candidates |
+        Where-Object { $_ -and (Test-Path $_) } |
+        Select-Object -Unique |
+        Where-Object {
+            (Test-Path (Join-Path $_ "conf\server.xml")) -and
+            (Test-Path (Join-Path $_ "bin")) -and
+            (Test-Path (Join-Path $_ "webapps"))
+        } |
+        Select-Object -First 1
 
+    if ($validBase) {
+        return $validBase
+    }
+
+    throw "No se encontró una instalación válida de Tomcat con conf\server.xml."
+}
 function Install-TomcatWeb {
     param(
         [int]$Port
