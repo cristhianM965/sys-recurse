@@ -84,8 +84,6 @@ EOF
   apache2ctl configtest
 }
 
-#!/usr/bin/env bash
-
 linux_apache_flow() {
     echo "=========================================="
     echo "🌐 INICIANDO DESPLIEGUE DE APACHE"
@@ -166,7 +164,7 @@ EOF
     echo "🌍 HTTP  disponible en: http://localhost:$PUERTO_HTTP"
     echo "🔒 HTTPS disponible en: https://localhost:$PUERTO_HTTPS"
     echo "=========================================="
-
+}
 linux_uninstall_apache() {
   echo "Desinstalando Apache2..."
 
