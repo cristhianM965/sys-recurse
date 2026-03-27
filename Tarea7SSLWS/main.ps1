@@ -40,8 +40,20 @@ while ($true) {
                         continue
                     }
 
-                    Install-ApacheWeb -Port $port
+                   Install-ApacheWeb -Port $port
+
+                 $ssl = Read-Host "¿SSL? (S/N)"
+
+                if ($ssl -eq "S") {
+                    $httpsPort = Read-Host "Puerto para Apache (HTTPS)"
+
+                    if (-not (Test-PortAvailable $httpsPort)) {
+                        Write-Host "Puerto HTTPS ocupado"
+                       continue
+                    }
+                    Configure-Apache-HTTPS -HttpsPort $httpsPort
                 }
+            }
 
                 "3" {
                     Write-Host "Nginx (pendiente)"

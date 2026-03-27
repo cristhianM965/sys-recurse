@@ -134,6 +134,15 @@ function Install-ApacheWeb {
             throw "Apache fue instalado, pero no se encontró el servicio para iniciarlo."
         }
     }
+    $confPath = Join-Path $apacheBase "conf\httpd.conf"
+    $conf = Get-Content $confPath -Raw
+
+    if ($conf -notmatch 'Include conf/extra/httpd-ssl.conf') {
+        $conf += "`r`nLoadModule ssl_module modules/mod_ssl.so"
+        $conf += "`r`nLoadModule socache_shmcb_module modules/mod_socache_shmcb.so"
+        $conf += "`r`nInclude conf/extra/httpd-ssl.conf`r`n"
+        Set-Content -Path $confPath -Value $conf -Encoding ASCII
+    }
 
     Write-Host "Apache instalado y ejecutándose en puerto $Port" -ForegroundColor Green
 }
