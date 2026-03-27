@@ -100,112 +100,76 @@ function Ensure-Java {
     Write-Host "Java instalado." -ForegroundColor Green
 }
 
-function Get-TomcatBase {
-    $candidates = @()
-
-    # 1. Intentar obtener ruta desde servicios registrados
-    $services = Get-CimInstance Win32_Service -ErrorAction SilentlyContinue |
-        Where-Object { $_.Name -like "*tomcat*" -or $_.DisplayName -like "*tomcat*" }
-
-    foreach ($svc in $services) {
-        $path = $svc.PathName
-
-        $serviceExe = [regex]::Match($path, '"([^"]*tomcat.*?\.exe)"').Groups[1].Value
-        if (-not $serviceExe) {
-            $serviceExe = [regex]::Match($path, '([A-Za-z]:\\[^"]*tomcat.*?\.exe)').Groups[1].Value
-        }
-
-        if ($serviceExe -and (Test-Path $serviceExe)) {
-            $base = Split-Path (Split-Path $serviceExe -Parent) -Parent
-            $candidates += $base
-        }
-    }
-
-    # 2. Rutas comunes reales
-    $candidates += @(
-        "C:\Program Files\Apache Software Foundation\Tomcat 10.1",
-        "C:\Program Files\Apache Software Foundation\Tomcat 10.0",
-        "C:\Tomcat",
-        "$env:ProgramFiles\Apache Software Foundation\Tomcat 10.1",
-        "$env:ProgramFiles\Apache Software Foundation\Tomcat 10.0"
-    )
-
-    # 3. Buscar carpetas que realmente tengan server.xml
-    $serverXmlFound = Get-ChildItem -Path "C:\" -Filter "server.xml" -Recurse -ErrorAction SilentlyContinue |
-        Where-Object { $_.FullName -match '\\conf\\server\.xml$' } |
-        Select-Object -First 1
-
-    if ($serverXmlFound) {
-        $realBase = Split-Path (Split-Path $serverXmlFound.FullName -Parent) -Parent
-        $candidates += $realBase
-    }
-
-    # 4. Validar candidatos
-    $validBase = $candidates |
-        Where-Object { $_ -and (Test-Path $_) } |
-        Select-Object -Unique |
-        Where-Object {
-            (Test-Path (Join-Path $_ "conf\server.xml")) -and
-            (Test-Path (Join-Path $_ "bin")) -and
-            (Test-Path (Join-Path $_ "webapps"))
-        } |
-        Select-Object -First 1
-
-    if ($validBase) {
-        return $validBase
-    }
-
-    throw "No se encontró una instalación válida de Tomcat con conf\server.xml."
-}
 function Install-TomcatWeb {
     param(
         [int]$Port
     )
 
-    Write-Host "Instalando Tomcat..." -ForegroundColor Cyan
+    Write-Host "Instalando Tomcat REAL..." -ForegroundColor Cyan
 
-    Ensure-Chocolatey
     Ensure-Java
 
-    choco install tomcat -y --no-progress
+    $baseDir = "C:\Tarea7"
+    $zipPath = "$baseDir\tomcat.zip"
+    $extractPath = "$baseDir\Tomcat"
 
-    choco install tomcat -y --no-progress
-
-    if ($LASTEXITCODE -ne 0) {
-        throw "No se pudo instalar Tomcat con Chocolatey."
+    if (!(Test-Path $baseDir)) {
+        New-Item -ItemType Directory -Path $baseDir | Out-Null
     }
 
-    Start-Sleep -Seconds 8
+    # Descargar Tomcat
+    Write-Host "Descargando Tomcat..." -ForegroundColor Yellow
 
-    $tomcatBase = Get-TomcatBase
+    $url = "https://dlcdn.apache.org/tomcat/tomcat-10/v10.1.28/bin/apache-tomcat-10.1.28-windows-x64.zip"
+    Invoke-WebRequest -Uri $url -OutFile $zipPath
 
-    $tomcatBase = Get-TomcatBase
-    Write-Host "Tomcat detectado en: $tomcatBase" -ForegroundColor Green
+    if (!(Test-Path $zipPath)) {
+        throw "No se pudo descargar Tomcat."
+    }
 
+    # Extraer
+    Write-Host "Extrayendo Tomcat..." -ForegroundColor Yellow
+
+    Expand-Archive -Path $zipPath -DestinationPath $baseDir -Force
+
+    $tomcatFolder = Get-ChildItem $baseDir -Directory |
+        Where-Object { $_.Name -like "apache-tomcat*" } |
+        Select-Object -First 1
+
+    if (-not $tomcatFolder) {
+        throw "No se encontró la carpeta extraída de Tomcat."
+    }
+
+    $tomcatBase = $tomcatFolder.FullName
+    Write-Host "Tomcat instalado en: $tomcatBase" -ForegroundColor Green
+
+    # Validar estructura
     $serverXml = Join-Path $tomcatBase "conf\server.xml"
-    if (-not (Test-Path $serverXml)) {
-        throw "No se encontró server.xml en $serverXml"
+    if (!(Test-Path $serverXml)) {
+        throw "Tomcat no contiene server.xml. Instalación inválida."
     }
+
+    # Configurar puerto
+    Write-Host "Configurando puerto $Port..." -ForegroundColor Yellow
 
     $xml = Get-Content $serverXml -Raw
-
     $xml = $xml -replace 'port="8080"', "port=""$Port"""
-    $xml = $xml -replace 'redirectPort="8443"', 'redirectPort="8443"'
-
     Set-Content -Path $serverXml -Value $xml -Encoding UTF8
 
+    # Página de prueba
     $rootIndex = Join-Path $tomcatBase "webapps\ROOT\index.jsp"
-    if (Test-Path $rootIndex) {
-        Set-Content -Path $rootIndex -Value "<html><body><h1>Tomcat Windows - reprobados.com</h1></body></html>" -Encoding UTF8
+    Set-Content -Path $rootIndex -Value "<html><body><h1>Tomcat OK - reprobados.com</h1></body></html>" -Encoding UTF8
+
+    # Iniciar Tomcat
+    Write-Host "Iniciando Tomcat..." -ForegroundColor Yellow
+
+    $startup = Join-Path $tomcatBase "bin\startup.bat"
+
+    if (!(Test-Path $startup)) {
+        throw "No se encontró startup.bat"
     }
 
-    $service = Get-Service -Name "Tomcat*" -ErrorAction SilentlyContinue | Select-Object -First 1
-    if ($service) {
-        Restart-Service -Name $service.Name -Force
-    }
-    else {
-        throw "No se encontró el servicio de Tomcat."
-    }
+    Start-Process $startup
 
-    Write-Host "Tomcat instalado y ejecutándose en puerto $Port" -ForegroundColor Green
+    Write-Host "Tomcat corriendo en puerto $Port" -ForegroundColor Green
 }
