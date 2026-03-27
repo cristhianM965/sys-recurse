@@ -27,7 +27,6 @@ function Ensure-Chocolatey {
 
     Set-ExecutionPolicy Bypass -Scope Process -Force
     [System.Net.ServicePointManager]::SecurityProtocol = [System.Net.SecurityProtocolType]::Tls12
-
     Invoke-Expression ((New-Object System.Net.WebClient).DownloadString('https://community.chocolatey.org/install.ps1'))
 
     $env:Path += ";C:\ProgramData\chocolatey\bin"
@@ -40,89 +39,154 @@ function Ensure-Chocolatey {
     Write-Host "Chocolatey instalado correctamente." -ForegroundColor Green
 }
 
-function Install-ApacheWeb {
+function Ensure-OpenSSL {
+    Write-Host "Verificando OpenSSL..." -ForegroundColor Cyan
+
+    if (Test-Path $OPENSSL_EXE) {
+        Write-Host "OpenSSL ya está instalado." -ForegroundColor Green
+        return
+    }
+
+    Ensure-Chocolatey
+
+    Write-Host "OpenSSL no encontrado. Instalando OpenSSL.Light..." -ForegroundColor Yellow
+    choco install openssl.light -y --no-progress
+
+    if ($LASTEXITCODE -ne 0) {
+        throw "No se pudo instalar OpenSSL con Chocolatey."
+    }
+
+    $possibleOpenSSL = @(
+        "C:\Program Files\OpenSSL-Win64\bin\openssl.exe",
+        "C:\Program Files\OpenSSL-Win32\bin\openssl.exe",
+        "C:\tools\OpenSSL-Win64\bin\openssl.exe",
+        "C:\ProgramData\chocolatey\bin\openssl.exe"
+    )
+
+    $found = $possibleOpenSSL | Where-Object { Test-Path $_ } | Select-Object -First 1
+
+    if (-not $found) {
+        $found = Get-ChildItem -Path "C:\" -Filter "openssl.exe" -Recurse -ErrorAction SilentlyContinue |
+            Select-Object -First 1 -ExpandProperty FullName
+    }
+
+    if (-not $found) {
+        throw "OpenSSL fue instalado, pero no se encontró openssl.exe"
+    }
+
+    $script:OPENSSL_EXE = $found
+    Write-Host "OpenSSL detectado en: $script:OPENSSL_EXE" -ForegroundColor Green
+}
+
+function Ensure-Java {
+    Write-Host "Verificando Java..." -ForegroundColor Cyan
+
+    $javaCmd = Get-Command java -ErrorAction SilentlyContinue
+    if ($javaCmd) {
+        Write-Host "Java ya está disponible." -ForegroundColor Green
+        return
+    }
+
+    Ensure-Chocolatey
+
+    Write-Host "Java no encontrado. Instalando Temurin 17..." -ForegroundColor Yellow
+    choco install temurin17jre -y --no-progress
+
+    if ($LASTEXITCODE -ne 0) {
+        throw "No se pudo instalar Java."
+    }
+
+    $env:Path += ";C:\Program Files\Eclipse Adoptium\jre-17.0.*\bin"
+    Write-Host "Java instalado." -ForegroundColor Green
+}
+
+function Get-TomcatBase {
+    $svcNames = @("Tomcat10", "Apache Tomcat 10.1 Tomcat10", "tomcat")
+
+    foreach ($name in $svcNames) {
+        $svc = Get-CimInstance Win32_Service -ErrorAction SilentlyContinue | Where-Object {
+            $_.Name -eq $name -or $_.DisplayName -eq $name
+        } | Select-Object -First 1
+
+        if ($svc) {
+            $path = $svc.PathName
+
+            $serviceExe = [regex]::Match($path, '"([^"]*tomcat\d*\.exe)"').Groups[1].Value
+            if (-not $serviceExe) {
+                $serviceExe = [regex]::Match($path, '"([^"]*tomcat.*?\.exe)"').Groups[1].Value
+            }
+
+            if ($serviceExe -and (Test-Path $serviceExe)) {
+                return Split-Path (Split-Path $serviceExe -Parent) -Parent
+            }
+        }
+    }
+
+    $possible = @(
+        "C:\Program Files\Apache Software Foundation\Tomcat 10.1",
+        "C:\Program Files\Apache Software Foundation\Tomcat 10.0",
+        "C:\Tomcat",
+        "$env:ProgramFiles\Apache Software Foundation\Tomcat 10.1"
+    )
+
+    $found = $possible | Where-Object { Test-Path $_ } | Select-Object -First 1
+    if ($found) {
+        return $found
+    }
+
+    $serviceExe = Get-ChildItem -Path "C:\" -Filter "Tomcat10.exe" -Recurse -ErrorAction SilentlyContinue |
+        Select-Object -First 1 -ExpandProperty FullName
+
+    if ($serviceExe) {
+        return Split-Path (Split-Path $serviceExe -Parent) -Parent
+    }
+
+    throw "No se encontró la carpeta base de Tomcat."
+}
+
+function Install-TomcatWeb {
     param(
         [int]$Port
     )
 
-    Write-Host "Instalando Apache con Chocolatey..." -ForegroundColor Cyan
+    Write-Host "Instalando Tomcat..." -ForegroundColor Cyan
 
     Ensure-Chocolatey
+    Ensure-Java
 
-    choco install apache-httpd -y --no-progress
+    choco install tomcat -y --no-progress
 
     if ($LASTEXITCODE -ne 0) {
-        throw "Error instalando Apache con Chocolatey."
+        throw "No se pudo instalar Tomcat con Chocolatey."
     }
 
-    $apacheService = Get-Service -Name "Apache" -ErrorAction SilentlyContinue
+    $tomcatBase = Get-TomcatBase
+    Write-Host "Tomcat detectado en: $tomcatBase" -ForegroundColor Green
 
-    if (-not $apacheService) {
-        throw "El servicio Apache no fue encontrado después de la instalación."
+    $serverXml = Join-Path $tomcatBase "conf\server.xml"
+    if (-not (Test-Path $serverXml)) {
+        throw "No se encontró server.xml en $serverXml"
     }
 
-    $serviceInfo = Get-CimInstance Win32_Service -Filter "Name='Apache'"
-    $servicePath = $serviceInfo.PathName
+    $xml = Get-Content $serverXml -Raw
 
-    if (-not $servicePath) {
-        throw "No se pudo obtener la ruta del servicio Apache."
+    $xml = $xml -replace 'port="8080"', "port=""$Port"""
+    $xml = $xml -replace 'redirectPort="8443"', 'redirectPort="8443"'
+
+    Set-Content -Path $serverXml -Value $xml -Encoding UTF8
+
+    $rootIndex = Join-Path $tomcatBase "webapps\ROOT\index.jsp"
+    if (Test-Path $rootIndex) {
+        Set-Content -Path $rootIndex -Value "<html><body><h1>Tomcat Windows - reprobados.com</h1></body></html>" -Encoding UTF8
     }
 
-    $httpdExe = [regex]::Match($servicePath, '"([^"]*httpd\.exe)"').Groups[1].Value
-
-    if (-not $httpdExe) {
-        $httpdExe = ($servicePath -split '\s+')[0]
+    $service = Get-Service -Name "Tomcat*" -ErrorAction SilentlyContinue | Select-Object -First 1
+    if ($service) {
+        Restart-Service -Name $service.Name -Force
+    }
+    else {
+        throw "No se encontró el servicio de Tomcat."
     }
 
-    if (-not (Test-Path $httpdExe)) {
-        throw "No se encontró httpd.exe en la ruta detectada: $httpdExe"
-    }
-
-    $apacheBase = Split-Path (Split-Path $httpdExe -Parent) -Parent
-
-    if (-not (Test-Path $apacheBase)) {
-        throw "No se encontró la carpeta base de Apache: $apacheBase"
-    }
-
-    Write-Host "Apache detectado en: $apacheBase" -ForegroundColor Green
-
-    $confPath = Join-Path $apacheBase "conf\httpd.conf"
-    if (-not (Test-Path $confPath)) {
-        throw "No se encontró httpd.conf en $confPath"
-    }
-
-    Write-Host "Configurando Apache en puerto $Port..." -ForegroundColor Yellow
-
-    $conf = Get-Content $confPath -Raw
-    $conf = $conf -replace 'Listen\s+\d+', "Listen $Port"
-    $conf = $conf -replace '#?ServerName\s+.*', "ServerName localhost:$Port"
-
-    if ($conf -notmatch 'LoadModule ssl_module modules/mod_ssl.so') {
-        $conf += "`r`nLoadModule ssl_module modules/mod_ssl.so"
-    }
-
-    if ($conf -notmatch 'LoadModule socache_shmcb_module modules/mod_socache_shmcb.so') {
-        $conf += "`r`nLoadModule socache_shmcb_module modules/mod_socache_shmcb.so"
-    }
-
-    if ($conf -notmatch 'Include conf/extra/httpd-ssl.conf') {
-        $conf += "`r`nInclude conf/extra/httpd-ssl.conf"
-    }
-
-    Set-Content -Path $confPath -Value $conf -Encoding ASCII
-
-    $htdocs = Join-Path $apacheBase "htdocs\index.html"
-    if (Test-Path $htdocs) {
-        Set-Content -Path $htdocs -Value "<h1>Apache Windows - reprobados.com</h1>" -Encoding ASCII
-    }
-
-    Write-Host "Validando configuración de Apache..." -ForegroundColor Yellow
-    & $httpdExe -t
-    if ($LASTEXITCODE -ne 0) {
-        throw "La configuración de Apache no es válida."
-    }
-
-    Restart-Service -Name "Apache" -Force
-
-    Write-Host "Apache instalado y ejecutándose en puerto $Port" -ForegroundColor Green
+    Write-Host "Tomcat instalado y ejecutándose en puerto $Port" -ForegroundColor Green
 }

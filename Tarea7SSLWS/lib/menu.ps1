@@ -7,7 +7,7 @@ function Show-Menu {
 function Show-Services {
     Write-Host "Seleccione un servicio:"
     Write-Host "1) IIS"
-    Write-Host "2) Apache"
+    Write-Host "2) Tomcat"
     Write-Host "3) Nginx"
     Write-Host "4) FTP"
 }

@@ -25,104 +25,104 @@ function Configure-IIS-HTTPS {
     Write-Host "HTTPS activo en $Port"
 }
 
-function Ensure-Apache-Cert {
-    New-Item -ItemType Directory -Force -Path $APACHE_CERT_DIR | Out-Null
+function Ensure-Tomcat-Cert {
+    New-Item -ItemType Directory -Force -Path $TOMCAT_CERT_DIR | Out-Null
 
-    if ((Test-Path $APACHE_CERT_CRT) -and (Test-Path $APACHE_CERT_KEY)) {
-        Write-Host "Certificado Apache existente detectado, reutilizando..." -ForegroundColor Yellow
+    if (Test-Path $TOMCAT_CERT_P12) {
+        Write-Host "Certificado PKCS12 de Tomcat existente detectado, reutilizando..." -ForegroundColor Yellow
         return
     }
 
     if (-not (Test-Path $OPENSSL_EXE)) {
-    Ensure-OpenSSL
+        Ensure-OpenSSL
     }
 
     if (-not (Test-Path $OPENSSL_EXE)) {
-    throw "No se encontró openssl en: $OPENSSL_EXE"
+        throw "No se encontró openssl.exe"
     }
 
-    Write-Host "Generando certificado autofirmado para Apache..." -ForegroundColor Cyan
+    Write-Host "Generando certificado PKCS12 para Tomcat..." -ForegroundColor Cyan
+
+    $tempKey = Join-Path $TOMCAT_CERT_DIR "tomcat-temp.key"
+    $tempCrt = Join-Path $TOMCAT_CERT_DIR "tomcat-temp.crt"
 
     & $OPENSSL_EXE req -x509 -nodes -days 365 -newkey rsa:2048 `
-        -keyout $APACHE_CERT_KEY `
-        -out $APACHE_CERT_CRT `
+        -keyout $tempKey `
+        -out $tempCrt `
         -subj "/C=MX/ST=Sinaloa/L=LosMochis/O=UAS/OU=SysAdmin/CN=$DOMAIN"
 
     if ($LASTEXITCODE -ne 0) {
-        throw "No se pudo generar el certificado SSL de Apache."
+        throw "No se pudo generar el certificado temporal de Tomcat."
     }
+
+    & $OPENSSL_EXE pkcs12 -export `
+        -out $TOMCAT_CERT_P12 `
+        -inkey $tempKey `
+        -in $tempCrt `
+        -passout pass:$TOMCAT_P12_PASS
+
+    if ($LASTEXITCODE -ne 0) {
+        throw "No se pudo generar el archivo P12 de Tomcat."
+    }
+
+    Remove-Item $tempKey -Force -ErrorAction SilentlyContinue
+    Remove-Item $tempCrt -Force -ErrorAction SilentlyContinue
 }
 
-function Configure-Apache-HTTPS {
+function Configure-Tomcat-HTTPS {
     param(
+        [int]$HttpPort,
         [int]$HttpsPort
     )
 
-    Ensure-Apache-Cert
+    Ensure-Tomcat-Cert
 
-    $possibleBases = @(
-        "C:\tools\Apache24",
-        "C:\Apache24",
-        "C:\Program Files\Apache24",
-        "$env:APPDATA\Apache24",
-        "$env:USERPROFILE\AppData\Roaming\Apache24"
-    )
+    $tomcatBase = Get-TomcatBase
+    Write-Host "Configurando SSL para Tomcat en: $tomcatBase" -ForegroundColor Cyan
 
-    $apacheBase = $possibleBases | Where-Object { Test-Path $_ } | Select-Object -First 1
-
-    if (-not $apacheBase) {
-        $foundHttpd = Get-ChildItem -Path "C:\" -Filter "httpd.exe" -Recurse -ErrorAction SilentlyContinue |
-            Select-Object -First 1
-
-        if ($foundHttpd) {
-            $apacheBase = Split-Path (Split-Path $foundHttpd.FullName -Parent) -Parent
-        }
+    $serverXml = Join-Path $tomcatBase "conf\server.xml"
+    if (-not (Test-Path $serverXml)) {
+        throw "No se encontró server.xml"
     }
 
-    if (-not $apacheBase) {
-        throw "No se encontró la carpeta base de Apache."
+    $xml = Get-Content $serverXml -Raw
+
+    $xml = $xml -replace 'port="8080"', "port=""$HttpPort"""
+    $xml = $xml -replace 'redirectPort="8443"', "redirectPort=""$HttpsPort"""
+
+    $xml = $xml -replace '(?s)<Connector port="8443".*?/>', ''
+
+    $httpsConnector = @"
+<Connector port="$HttpsPort"
+           protocol="org.apache.coyote.http11.Http11NioProtocol"
+           maxThreads="150"
+           SSLEnabled="true"
+           scheme="https"
+           secure="true">
+    <SSLHostConfig>
+        <Certificate certificateKeystoreFile="$($TOMCAT_CERT_P12 -replace '\\','/')"
+                     certificateKeystorePassword="$TOMCAT_P12_PASS"
+                     certificateKeystoreType="PKCS12" />
+    </SSLHostConfig>
+</Connector>
+"@
+
+    if ($xml -notmatch [regex]::Escape("certificateKeystoreFile")) {
+        $xml = $xml -replace '</Service>', "$httpsConnector`r`n</Service>"
     }
 
-    $sslConf = Join-Path $apacheBase "conf\extra\httpd-ssl.conf"
-    if (-not (Test-Path $sslConf)) {
-        throw "No se encontró httpd-ssl.conf en $sslConf"
+    Set-Content -Path $serverXml -Value $xml -Encoding UTF8
+
+    $service = Get-Service -Name "Tomcat*" -ErrorAction SilentlyContinue | Select-Object -First 1
+    if (-not $service) {
+        throw "No se encontró el servicio de Tomcat para reiniciarlo."
     }
 
-    Write-Host "Configurando HTTPS para Apache en puerto $HttpsPort..." -ForegroundColor Cyan
+    Stop-Service -Name $service.Name -Force -ErrorAction SilentlyContinue
+    Start-Sleep -Seconds 3
+    Start-Service -Name $service.Name
+    Start-Sleep -Seconds 3
 
-    $ssl = Get-Content $sslConf -Raw
-
-    $ssl = $ssl -replace 'Listen\s+\d+', "Listen $HttpsPort"
-    $ssl = $ssl -replace '<VirtualHost _default_:\d+>', "<VirtualHost _default_:$HttpsPort>"
-    $ssl = $ssl -replace 'ServerName\s+.*', "ServerName localhost:$HttpsPort"
-    $ssl = $ssl -replace 'SSLCertificateFile\s+".*"', "SSLCertificateFile `"$APACHE_CERT_CRT`""
-    $ssl = $ssl -replace 'SSLCertificateKeyFile\s+".*"', "SSLCertificateKeyFile `"$APACHE_CERT_KEY`""
-
-    Set-Content -Path $sslConf -Value $ssl -Encoding ASCII
-
-    $httpdExe = Join-Path $apacheBase "bin\httpd.exe"
-    & $httpdExe -t
-    if ($LASTEXITCODE -ne 0) {
-        throw "La configuración SSL de Apache no es válida."
-    }
-
-    $apacheService = Get-Service -Name "Apache" -ErrorAction SilentlyContinue
-    if (-not $apacheService) {
-        $apacheService = Get-Service -Name "Apache2.4" -ErrorAction SilentlyContinue
-    }
-
-    if ($apacheService) {
-        Write-Host "Reiniciando Apache correctamente..." -ForegroundColor Yellow
-
-        Stop-Service -Name "Apache" -Force
-        Start-Sleep -Seconds 3
-
-        Start-Service -Name "Apache"
-        Start-Sleep -Seconds 2
-    }
-    else {
-        throw "No se encontró el servicio de Apache para reiniciarlo."
-    }
-
-    Write-Host "Apache HTTPS activo en puerto $HttpsPort" -ForegroundColor Green
+    Write-Host "Tomcat HTTPS activo en puerto $HttpsPort" -ForegroundColor Green
 }
+
