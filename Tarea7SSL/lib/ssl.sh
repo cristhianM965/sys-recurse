@@ -46,8 +46,12 @@ EOF
     -out "$CERT_P12" \
     -passout pass:"$TOMCAT_P12_PASS"
 
-  chmod 600 "$CERT_KEY" "$CERT_P12"
   chmod 644 "$CERT_CRT"
+  chmod 640 "$CERT_KEY" "$CERT_P12"
+
+  if id tomcat >/dev/null 2>&1; then
+  chown root:tomcat "$CERT_KEY" "$CERT_P12"
+  fi
 
   log "Certificado autofirmado generado en $CERT_DIR"
 }
@@ -285,13 +289,9 @@ configure_tomcat_custom_ports() {
 
   cp "$server_xml" "$server_xml.bak.$(date +%s)"
 
-  # Elimina el conector HTTP por defecto y cualquier conector SSL previo
-  sed -i '/port="8080"/d' "$server_xml"
-  sed -i '/SSLEnabled="true"/d' "$server_xml"
-  sed -i '/certificateKeystoreFile=/d' "$server_xml"
-  sed -i '/certificateKeystorePassword=/d' "$server_xml"
-  sed -i '/keystoreFile=.*reprobados\.p12/d' "$server_xml"
-  sed -i '/keystorePass=/d' "$server_xml"
+  # Elimina conectores previos insertados por el script
+  sed -i '/<Connector port="[0-9]\+" protocol="HTTP\/1\.1" connectionTimeout="20000" redirectPort="[0-9]\+" \/>/d' "$server_xml"
+  sed -i '/SSLEnabled="true"/,/<\/Connector>/d' "$server_xml"
 
   # Inserta conector HTTP personalizado
   sed -i "/<Service name=\"Catalina\">/a\\
@@ -301,10 +301,13 @@ configure_tomcat_custom_ports() {
     [[ -n "$https_port" ]] || die "Falta puerto HTTPS para Tomcat"
     ensure_certificate_exists
 
-    # Inserta conector HTTPS correcto para PKCS12
     sed -i "/<Service name=\"Catalina\">/a\\
-    <Connector port=\"$https_port\" protocol=\"HTTP/1.1\" maxThreads=\"200\" SSLEnabled=\"true\" scheme=\"https\" secure=\"true\" clientAuth=\"false\" keystoreType=\"PKCS12\" keystoreFile=\"$CERT_P12\" keystorePass=\"$TOMCAT_P12_PASS\" sslProtocol=\"TLS\" />" "$server_xml"
-    
+    <Connector port=\"$https_port\" protocol=\"org.apache.coyote.http11.Http11NioProtocol\" maxThreads=\"200\" SSLEnabled=\"true\" scheme=\"https\" secure=\"true\">\\
+        <SSLHostConfig>\\
+            <Certificate certificateKeystoreFile=\"$CERT_P12\" certificateKeystorePassword=\"$TOMCAT_P12_PASS\" certificateKeystoreType=\"PKCS12\" />\\
+        </SSLHostConfig>\\
+    </Connector>" "$server_xml"
+
     if [[ -n "$webxml" ]] && ! grep -q "HttpHeaderSecurityFilter" "$webxml"; then
       cp "$webxml" "$webxml.bak.$(date +%s)"
       sed -i '/<\/web-app>/i\
@@ -322,7 +325,14 @@ configure_tomcat_custom_ports() {
     fi
   fi
 
-  systemctl restart "$tomcat_svc"
+  systemctl restart "$tomcat_svc" || die "No se pudo reiniciar $tomcat_svc"
+
+  sleep 2
+
+  if ! systemctl is-active --quiet "$tomcat_svc"; then
+    die "Tomcat no quedó activo después de aplicar la configuración"
+  fi
+
   log "Tomcat configurado en puerto HTTP $http_port ${https_port:+y HTTPS $https_port}"
 }
 
