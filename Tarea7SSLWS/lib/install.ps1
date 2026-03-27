@@ -55,27 +55,33 @@ function Install-ApacheWeb {
         throw "Error instalando Apache con Chocolatey."
     }
 
-    $possibleBases = @(
-        "C:\tools\Apache24",
-        "C:\Apache24",
-        "C:\Program Files\Apache24",
-        "$env:APPDATA\Apache24",
-        "$env:USERPROFILE\AppData\Roaming\Apache24"
-    )
+    $apacheService = Get-Service -Name "Apache" -ErrorAction SilentlyContinue
 
-    $apacheBase = $possibleBases | Where-Object { Test-Path $_ } | Select-Object -First 1
-
-    if (-not $apacheBase) {
-        $foundHttpd = Get-ChildItem -Path "C:\" -Filter "httpd.exe" -Recurse -ErrorAction SilentlyContinue |
-            Select-Object -First 1
-
-        if ($foundHttpd) {
-            $apacheBase = Split-Path (Split-Path $foundHttpd.FullName -Parent) -Parent
-        }
+    if (-not $apacheService) {
+        throw "El servicio Apache no fue encontrado después de la instalación."
     }
 
-    if (-not $apacheBase) {
-        throw "No se encontró la carpeta base de Apache después de la instalación."
+    $serviceInfo = Get-CimInstance Win32_Service -Filter "Name='Apache'"
+    $servicePath = $serviceInfo.PathName
+
+    if (-not $servicePath) {
+        throw "No se pudo obtener la ruta del servicio Apache."
+    }
+
+    $httpdExe = [regex]::Match($servicePath, '"([^"]*httpd\.exe)"').Groups[1].Value
+
+    if (-not $httpdExe) {
+        $httpdExe = ($servicePath -split '\s+')[0]
+    }
+
+    if (-not (Test-Path $httpdExe)) {
+        throw "No se encontró httpd.exe en la ruta detectada: $httpdExe"
+    }
+
+    $apacheBase = Split-Path (Split-Path $httpdExe -Parent) -Parent
+
+    if (-not (Test-Path $apacheBase)) {
+        throw "No se encontró la carpeta base de Apache: $apacheBase"
     }
 
     Write-Host "Apache detectado en: $apacheBase" -ForegroundColor Green
@@ -90,16 +96,24 @@ function Install-ApacheWeb {
     $conf = Get-Content $confPath -Raw
     $conf = $conf -replace 'Listen\s+\d+', "Listen $Port"
     $conf = $conf -replace '#?ServerName\s+.*', "ServerName localhost:$Port"
+
+    if ($conf -notmatch 'LoadModule ssl_module modules/mod_ssl.so') {
+        $conf += "`r`nLoadModule ssl_module modules/mod_ssl.so"
+    }
+
+    if ($conf -notmatch 'LoadModule socache_shmcb_module modules/mod_socache_shmcb.so') {
+        $conf += "`r`nLoadModule socache_shmcb_module modules/mod_socache_shmcb.so"
+    }
+
+    if ($conf -notmatch 'Include conf/extra/httpd-ssl.conf') {
+        $conf += "`r`nInclude conf/extra/httpd-ssl.conf"
+    }
+
     Set-Content -Path $confPath -Value $conf -Encoding ASCII
 
     $htdocs = Join-Path $apacheBase "htdocs\index.html"
     if (Test-Path $htdocs) {
         Set-Content -Path $htdocs -Value "<h1>Apache Windows - reprobados.com</h1>" -Encoding ASCII
-    }
-
-    $httpdExe = Join-Path $apacheBase "bin\httpd.exe"
-    if (-not (Test-Path $httpdExe)) {
-        throw "No se encontró httpd.exe en $httpdExe"
     }
 
     Write-Host "Validando configuración de Apache..." -ForegroundColor Yellow
@@ -108,81 +122,7 @@ function Install-ApacheWeb {
         throw "La configuración de Apache no es válida."
     }
 
-    $apacheService = Get-Service -Name "Apache" -ErrorAction SilentlyContinue
-    if (-not $apacheService) {
-        $apacheService = Get-Service -Name "Apache2.4" -ErrorAction SilentlyContinue
-    }
-
-    if ($apacheService) {
-        Write-Host "Reiniciando servicio Apache..." -ForegroundColor Yellow
-        Restart-Service -Name $apacheService.Name -Force
-    }
-    else {
-        Write-Host "Instalando servicio Apache..." -ForegroundColor Yellow
-        & $httpdExe -k install
-        Start-Sleep -Seconds 2
-
-        $apacheService = Get-Service -Name "Apache" -ErrorAction SilentlyContinue
-        if (-not $apacheService) {
-            $apacheService = Get-Service -Name "Apache2.4" -ErrorAction SilentlyContinue
-        }
-
-        if ($apacheService) {
-            Start-Service -Name $apacheService.Name
-        }
-        else {
-            throw "Apache fue instalado, pero no se encontró el servicio para iniciarlo."
-        }
-    }
-    $confPath = Join-Path $apacheBase "conf\httpd.conf"
-    $conf = Get-Content $confPath -Raw
-
-    if ($conf -notmatch 'Include conf/extra/httpd-ssl.conf') {
-        $conf += "`r`nLoadModule ssl_module modules/mod_ssl.so"
-        $conf += "`r`nLoadModule socache_shmcb_module modules/mod_socache_shmcb.so"
-        $conf += "`r`nInclude conf/extra/httpd-ssl.conf`r`n"
-        Set-Content -Path $confPath -Value $conf -Encoding ASCII
-    }
+    Restart-Service -Name "Apache" -Force
 
     Write-Host "Apache instalado y ejecutándose en puerto $Port" -ForegroundColor Green
-}
-
-function Ensure-OpenSSL {
-    Write-Host "Verificando OpenSSL..." -ForegroundColor Cyan
-
-    if (Test-Path $OPENSSL_EXE) {
-        Write-Host "OpenSSL ya está instalado." -ForegroundColor Green
-        return
-    }
-
-    Ensure-Chocolatey
-
-    Write-Host "OpenSSL no encontrado. Instalando OpenSSL.Light..." -ForegroundColor Yellow
-
-    choco install openssl.light -y --no-progress
-
-    if ($LASTEXITCODE -ne 0) {
-        throw "No se pudo instalar OpenSSL con Chocolatey."
-    }
-
-    $possibleOpenSSL = @(
-        "C:\Program Files\OpenSSL-Win64\bin\openssl.exe",
-        "C:\Program Files\OpenSSL-Win32\bin\openssl.exe",
-        "C:\tools\OpenSSL-Win64\bin\openssl.exe",
-        "C:\ProgramData\chocolatey\bin\openssl.exe"
-    )
-
-    $found = $possibleOpenSSL | Where-Object { Test-Path $_ } | Select-Object -First 1
-
-    if (-not $found) {
-        $found = Get-ChildItem -Path "C:\" -Filter "openssl.exe" -Recurse -ErrorAction SilentlyContinue |
-            Select-Object -First 1 -ExpandProperty FullName
-    }
-
-    if (-not $found) {
-        throw "OpenSSL fue instalado, pero no se encontró openssl.exe"
-    }
-
-    $script:OPENSSL_EXE = $found
-    Write-Host "OpenSSL detectado en: $script:OPENSSL_EXE" -ForegroundColor Green
 }
