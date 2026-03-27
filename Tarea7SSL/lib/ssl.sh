@@ -57,12 +57,19 @@ EOF
 }
 
 ensure_certificate_exists() {
-  if [[ -f "$CERT_CRT" && -f "$CERT_KEY" && -f "$CERT_P12" ]]; then
-    log "Certificado existente detectado. Se reutilizará."
-    return 0
-  fi
+  if [[ -f "$CERT_P12" ]]; then
+    log "Certificado existente detectado. Ajustando permisos..."
 
-  generate_self_signed_cert
+    chmod 644 "$CERT_CRT" 2>/dev/null || true
+    chmod 640 "$CERT_KEY" "$CERT_P12" 2>/dev/null || true
+
+    if id tomcat >/dev/null 2>&1; then
+      chown root:tomcat "$CERT_KEY" "$CERT_P12" 2>/dev/null || true
+    fi
+
+  else
+    generate_self_signed_cert
+  fi
 }
 
 configure_apache_custom_ports() {
