@@ -32,30 +32,29 @@ while ($true) {
                     }
                 }
 
-                "2" {
-                   "2" {
-                        $httpPort = Read-Host "Puerto para Tomcat (HTTP)"
+               "2" {
+                    $httpPort = Read-Host "Puerto para Tomcat (HTTP)"
 
-                        if (-not (Test-PortAvailable $httpPort)) {
-                            Write-Host "Puerto HTTP ocupado"
+                    if (-not (Test-PortAvailable $httpPort)) {
+                        Write-Host "Puerto HTTP ocupado"
+                        continue
+                    }
+
+                    Install-TomcatWeb -Port $httpPort
+
+                    $ssl = Read-Host "¿SSL? (S/N)"
+
+                    if ($ssl -eq "S") {
+                        $httpsPort = Read-Host "Puerto para Tomcat (HTTPS)"
+
+                        if (-not (Test-PortAvailable $httpsPort)) {
+                            Write-Host "Puerto HTTPS ocupado"
                             continue
                         }
 
-                        Install-TomcatWeb -Port $httpPort
-
-                        $ssl = Read-Host "¿SSL? (S/N)"
-
-                        if ($ssl -eq "S") {
-                            $httpsPort = Read-Host "Puerto para Tomcat (HTTPS)"
-
-                            if (-not (Test-PortAvailable $httpsPort)) {
-                                Write-Host "Puerto HTTPS ocupado"
-                                continue
-                            }
-
-                            Configure-Tomcat-HTTPS -HttpPort $httpPort -HttpsPort $httpsPort
-                        }
+                        Configure-Tomcat-HTTPS -HttpPort $httpPort -HttpsPort $httpsPort
                     }
+                }
 
                 "3" {
                     Write-Host "Nginx (pendiente)"
