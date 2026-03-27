@@ -76,23 +76,23 @@ select_option() {
 
   [[ ${#options[@]} -gt 0 ]] || die "No hay opciones disponibles para seleccionar."
 
-  echo
-  echo "$title"
+  echo >&2
+  echo "$title" >&2
 
   local i=1
   for opt in "${options[@]}"; do
-    echo "  $i) $opt"
+    echo "  $i) $opt" >&2
     ((i++))
   done
 
   local choice
   while true; do
-    read -r -p "Seleccione una opción: " choice
+    read -r -p "Seleccione una opción: " choice >&2
     if [[ "$choice" =~ ^[0-9]+$ ]] && (( choice >= 1 && choice <= ${#options[@]} )); then
       echo "${options[$((choice-1))]}"
       return 0
     fi
-    echo "Opción inválida."
+    echo "Opción inválida." >&2
   done
 }
 
