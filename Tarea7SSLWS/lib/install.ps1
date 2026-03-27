@@ -101,24 +101,16 @@ function Ensure-Java {
 }
 
 function Get-TomcatBase {
-    $svcNames = @("Tomcat10", "Apache Tomcat 10.1 Tomcat10", "tomcat")
+    $svc = Get-CimInstance Win32_Service -ErrorAction SilentlyContinue |
+        Where-Object { $_.Name -like "*tomcat*" -or $_.DisplayName -like "*tomcat*" } |
+        Select-Object -First 1
 
-    foreach ($name in $svcNames) {
-        $svc = Get-CimInstance Win32_Service -ErrorAction SilentlyContinue | Where-Object {
-            $_.Name -eq $name -or $_.DisplayName -eq $name
-        } | Select-Object -First 1
+    if ($svc) {
+        $path = $svc.PathName
+        $serviceExe = [regex]::Match($path, '"([^"]*tomcat.*?\.exe)"').Groups[1].Value
 
-        if ($svc) {
-            $path = $svc.PathName
-
-            $serviceExe = [regex]::Match($path, '"([^"]*tomcat\d*\.exe)"').Groups[1].Value
-            if (-not $serviceExe) {
-                $serviceExe = [regex]::Match($path, '"([^"]*tomcat.*?\.exe)"').Groups[1].Value
-            }
-
-            if ($serviceExe -and (Test-Path $serviceExe)) {
-                return Split-Path (Split-Path $serviceExe -Parent) -Parent
-            }
+        if ($serviceExe -and (Test-Path $serviceExe)) {
+            return Split-Path (Split-Path $serviceExe -Parent) -Parent
         }
     }
 
@@ -126,7 +118,9 @@ function Get-TomcatBase {
         "C:\Program Files\Apache Software Foundation\Tomcat 10.1",
         "C:\Program Files\Apache Software Foundation\Tomcat 10.0",
         "C:\Tomcat",
-        "$env:ProgramFiles\Apache Software Foundation\Tomcat 10.1"
+        "$env:ProgramFiles\Apache Software Foundation\Tomcat 10.1",
+        "C:\ProgramData\chocolatey\lib\tomcat",
+        "C:\ProgramData\chocolatey\lib\tomcat.install"
     )
 
     $found = $possible | Where-Object { Test-Path $_ } | Select-Object -First 1
@@ -134,11 +128,19 @@ function Get-TomcatBase {
         return $found
     }
 
-    $serviceExe = Get-ChildItem -Path "C:\" -Filter "Tomcat10.exe" -Recurse -ErrorAction SilentlyContinue |
+    $serviceExe = Get-ChildItem -Path "C:\" -Filter "*tomcat*.exe" -Recurse -ErrorAction SilentlyContinue |
         Select-Object -First 1 -ExpandProperty FullName
 
     if ($serviceExe) {
         return Split-Path (Split-Path $serviceExe -Parent) -Parent
+    }
+
+    $folder = Get-ChildItem -Path "C:\ProgramData\chocolatey\lib" -Directory -ErrorAction SilentlyContinue |
+        Where-Object { $_.Name -like "*tomcat*" } |
+        Select-Object -First 1
+
+    if ($folder) {
+        return $folder.FullName
     }
 
     throw "No se encontró la carpeta base de Tomcat."
@@ -156,9 +158,15 @@ function Install-TomcatWeb {
 
     choco install tomcat -y --no-progress
 
+    choco install tomcat -y --no-progress
+
     if ($LASTEXITCODE -ne 0) {
         throw "No se pudo instalar Tomcat con Chocolatey."
     }
+
+    Start-Sleep -Seconds 8
+
+    $tomcatBase = Get-TomcatBase
 
     $tomcatBase = Get-TomcatBase
     Write-Host "Tomcat detectado en: $tomcatBase" -ForegroundColor Green
