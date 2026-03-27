@@ -25,10 +25,20 @@ function Install-ApacheWeb {
 
     if (-not (Test-Path $APACHE_ZIP)) {
         Write-Host "Descargando Apache..." -ForegroundColor Yellow
-        Invoke-WebRequest -Uri $APACHE_WEB_URL -OutFile $APACHE_ZIP
+        try {
+            [Net.ServicePointManager]::SecurityProtocol = [Net.SecurityProtocolType]::Tls12
+            Invoke-WebRequest -Uri $APACHE_WEB_URL -OutFile $APACHE_ZIP -MaximumRedirection 5 -UseBasicParsing
+        }
+        catch {
+            throw "No se pudo descargar Apache. Error: $($_.Exception.Message)"
+        }
     }
     else {
         Write-Host "ZIP de Apache ya existe, reutilizando..." -ForegroundColor Yellow
+    }
+
+    if (-not (Test-Path $APACHE_ZIP)) {
+        throw "No existe el archivo ZIP de Apache en $APACHE_ZIP"
     }
 
     if (Test-Path $APACHE_BASE) {
@@ -38,7 +48,10 @@ function Install-ApacheWeb {
         Write-Host "Extrayendo Apache..." -ForegroundColor Yellow
         Expand-Archive -Path $APACHE_ZIP -DestinationPath "C:\Tarea7" -Force
 
-        $extracted = Get-ChildItem "C:\Tarea7" -Directory | Where-Object { $_.Name -like "Apache24*" } | Select-Object -First 1
+        $extracted = Get-ChildItem "C:\Tarea7" -Directory | Where-Object {
+            $_.Name -like "Apache24*" -or $_.Name -like "httpd*"
+        } | Select-Object -First 1
+
         if (-not $extracted) {
             throw "No se encontró la carpeta extraída de Apache."
         }
@@ -54,10 +67,9 @@ function Install-ApacheWeb {
     }
 
     Write-Host "Configurando Apache en puerto $Port..." -ForegroundColor Yellow
-
     $conf = Get-Content $confPath -Raw
     $conf = $conf -replace 'Listen\s+\d+', "Listen $Port"
-    $conf = $conf -replace 'ServerName\s+.*', "ServerName localhost:$Port"
+    $conf = $conf -replace '#?ServerName\s+.*', "ServerName localhost:$Port"
     Set-Content -Path $confPath -Value $conf -Encoding ASCII
 
     $htdocs = Join-Path $APACHE_BASE "htdocs\index.html"
@@ -65,17 +77,13 @@ function Install-ApacheWeb {
 
     $httpdExe = Join-Path $APACHE_BASE "bin\httpd.exe"
 
-    Write-Host "Probando configuración de Apache..." -ForegroundColor Yellow
     & $httpdExe -t
     if ($LASTEXITCODE -ne 0) {
         throw "La configuración de Apache no es válida."
     }
 
-    Write-Host "Instalando servicio Apache..." -ForegroundColor Yellow
     & $httpdExe -k uninstall 2>$null | Out-Null
     & $httpdExe -k install
-
-    Write-Host "Iniciando servicio Apache..." -ForegroundColor Yellow
     Start-Service Apache2.4
 
     Write-Host "Apache instalado y ejecutándose en puerto $Port" -ForegroundColor Green
