@@ -58,14 +58,27 @@ function Install-ApacheWeb {
     $possibleBases = @(
         "C:\tools\Apache24",
         "C:\Apache24",
-        "C:\Program Files\Apache24"
+        "C:\Program Files\Apache24",
+        "$env:APPDATA\Apache24",
+        "$env:USERPROFILE\AppData\Roaming\Apache24"
     )
 
     $apacheBase = $possibleBases | Where-Object { Test-Path $_ } | Select-Object -First 1
 
     if (-not $apacheBase) {
+        $foundHttpd = Get-ChildItem -Path "C:\" -Filter "httpd.exe" -Recurse -ErrorAction SilentlyContinue |
+            Select-Object -First 1
+
+        if ($foundHttpd) {
+            $apacheBase = Split-Path (Split-Path $foundHttpd.FullName -Parent) -Parent
+        }
+    }
+
+    if (-not $apacheBase) {
         throw "No se encontró la carpeta base de Apache después de la instalación."
     }
+
+    Write-Host "Apache detectado en: $apacheBase" -ForegroundColor Green
 
     $confPath = Join-Path $apacheBase "conf\httpd.conf"
     if (-not (Test-Path $confPath)) {
@@ -95,15 +108,31 @@ function Install-ApacheWeb {
         throw "La configuración de Apache no es válida."
     }
 
-    Write-Host "Reiniciando/levantando Apache..." -ForegroundColor Yellow
+    $apacheService = Get-Service -Name "Apache" -ErrorAction SilentlyContinue
+    if (-not $apacheService) {
+        $apacheService = Get-Service -Name "Apache2.4" -ErrorAction SilentlyContinue
+    }
 
-    $apacheService = Get-Service -Name "Apache2.4" -ErrorAction SilentlyContinue
     if ($apacheService) {
-        Restart-Service -Name "Apache2.4" -Force
+        Write-Host "Reiniciando servicio Apache..." -ForegroundColor Yellow
+        Restart-Service -Name $apacheService.Name -Force
     }
     else {
+        Write-Host "Instalando servicio Apache..." -ForegroundColor Yellow
         & $httpdExe -k install
-        Start-Service -Name "Apache2.4"
+        Start-Sleep -Seconds 2
+
+        $apacheService = Get-Service -Name "Apache" -ErrorAction SilentlyContinue
+        if (-not $apacheService) {
+            $apacheService = Get-Service -Name "Apache2.4" -ErrorAction SilentlyContinue
+        }
+
+        if ($apacheService) {
+            Start-Service -Name $apacheService.Name
+        }
+        else {
+            throw "Apache fue instalado, pero no se encontró el servicio para iniciarlo."
+        }
     }
 
     Write-Host "Apache instalado y ejecutándose en puerto $Port" -ForegroundColor Green
