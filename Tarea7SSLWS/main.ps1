@@ -36,8 +36,23 @@ while ($true) {
             }
         }
 
-        "2" {
-            break
+       "2" {
+            $port = Read-Host "Puerto para Apache"
+
+            if (-not (Test-PortAvailable $port)) {
+                Write-Host "Puerto ocupado"
+                 continue
+            }
+
+            Install-ApacheWeb -Port $port
+        }
+
+        "3" {
+            Write-Host "Nginx (pendiente)"
+        }
+
+        "4" {
+            Write-Host "FTP (pendiente)"
         }
     }
 }
