@@ -77,25 +77,30 @@ function Configure-Tomcat-HTTPS {
 
     Ensure-Tomcat-Cert
 
-    $tomcatBase = Get-TomcatBase
-    Write-Host "Configurando SSL para Tomcat en: $tomcatBase" -ForegroundColor Cyan
+    if (-not (Test-Path $TOMCAT_BASE)) {
+        throw "Tomcat no existe en $TOMCAT_BASE"
+    }
 
-    $serverXml = Join-Path $tomcatBase "conf\server.xml"
+    Write-Host "Configurando SSL para Tomcat..." -ForegroundColor Cyan
+
+    $serverXml = Join-Path $TOMCAT_BASE "conf\server.xml"
+
     if (-not (Test-Path $serverXml)) {
         throw "No se encontró server.xml"
     }
 
     $xml = Get-Content $serverXml -Raw
 
+    # configurar puertos
     $xml = $xml -replace 'port="8080"', "port=""$HttpPort"""
     $xml = $xml -replace 'redirectPort="8443"', "redirectPort=""$HttpsPort"""
 
+    # eliminar HTTPS viejo
     $xml = $xml -replace '(?s)<Connector port="8443".*?/>', ''
 
-    $httpsConnector = @"
+    $https = @"
 <Connector port="$HttpsPort"
            protocol="org.apache.coyote.http11.Http11NioProtocol"
-           maxThreads="150"
            SSLEnabled="true"
            scheme="https"
            secure="true">
@@ -107,22 +112,29 @@ function Configure-Tomcat-HTTPS {
 </Connector>
 "@
 
-    if ($xml -notmatch [regex]::Escape("certificateKeystoreFile")) {
-        $xml = $xml -replace '</Service>', "$httpsConnector`r`n</Service>"
+    if ($xml -notmatch "certificateKeystoreFile") {
+        $xml = $xml -replace '</Service>', "$https`r`n</Service>"
     }
 
-    Set-Content -Path $serverXml -Value $xml -Encoding UTF8
+    Set-Content $serverXml $xml -Encoding UTF8
 
-    $service = Get-Service -Name "Tomcat*" -ErrorAction SilentlyContinue | Select-Object -First 1
-    if (-not $service) {
-        throw "No se encontró el servicio de Tomcat para reiniciarlo."
+    # reiniciar Tomcat (SIN servicio)
+    Write-Host "Reiniciando Tomcat..." -ForegroundColor Yellow
+
+    $shutdown = Join-Path $TOMCAT_BASE "bin\shutdown.bat"
+    $startup = Join-Path $TOMCAT_BASE "bin\startup.bat"
+
+    if (Test-Path $shutdown) {
+        Start-Process $shutdown -NoNewWindow
+        Start-Sleep -Seconds 5
     }
 
-    Stop-Service -Name $service.Name -Force -ErrorAction SilentlyContinue
-    Start-Sleep -Seconds 3
-    Start-Service -Name $service.Name
-    Start-Sleep -Seconds 3
+    if (Test-Path $startup) {
+        Start-Process $startup -NoNewWindow
+    }
+    else {
+        throw "No se encontró startup.bat"
+    }
 
-    Write-Host "Tomcat HTTPS activo en puerto $HttpsPort" -ForegroundColor Green
+    Write-Host "Tomcat HTTPS en puerto $HttpsPort" -ForegroundColor Green
 }
-

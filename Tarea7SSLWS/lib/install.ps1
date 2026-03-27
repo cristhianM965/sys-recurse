@@ -105,72 +105,56 @@ function Install-TomcatWeb {
         [int]$Port
     )
 
-    Write-Host "Instalando Tomcat REAL..." -ForegroundColor Cyan
+    Write-Host "Instalando Tomcat..." -ForegroundColor Cyan
 
     Ensure-Java
 
-    $baseDir = "C:\Tarea7"
-    $zipPath = "$baseDir\tomcat.zip"
-    $extractPath = "$baseDir\Tomcat"
+    $BASE_DIR = "C:\Tarea7"
+    $ZIP = "$BASE_DIR\tomcat.zip"
 
-    if (!(Test-Path $baseDir)) {
-        New-Item -ItemType Directory -Path $baseDir | Out-Null
+    if (!(Test-Path $BASE_DIR)) {
+        New-Item -ItemType Directory -Path $BASE_DIR | Out-Null
     }
 
-    # Descargar Tomcat
-    Write-Host "Descargando Tomcat..." -ForegroundColor Yellow
+    if (!(Test-Path $TOMCAT_BASE)) {
 
-    $url = "https://archive.apache.org/dist/tomcat/tomcat-10/v10.1.19/bin/apache-tomcat-10.1.19-windows-x64.zip"
+        Write-Host "Descargando Tomcat..." -ForegroundColor Yellow
 
-    Invoke-WebRequest -Uri $url -OutFile $zipPath
-    
-    if (!(Test-Path $zipPath)) {
-        throw "No se pudo descargar Tomcat."
+        $url = "https://archive.apache.org/dist/tomcat/tomcat-10/v10.1.19/bin/apache-tomcat-10.1.19-windows-x64.zip"
+
+        Invoke-WebRequest -Uri $url -OutFile $ZIP
+
+        if (!(Test-Path $ZIP)) {
+            throw "No se pudo descargar Tomcat"
+        }
+
+        Write-Host "Extrayendo Tomcat..." -ForegroundColor Yellow
+
+        Expand-Archive $ZIP -DestinationPath $BASE_DIR -Force
     }
 
-    # Extraer
-    Write-Host "Extrayendo Tomcat..." -ForegroundColor Yellow
+    $serverXml = Join-Path $TOMCAT_BASE "conf\server.xml"
 
-    Expand-Archive -Path $zipPath -DestinationPath $baseDir -Force
-
-    $tomcatFolder = Get-ChildItem $baseDir -Directory |
-        Where-Object { $_.Name -like "apache-tomcat*" } |
-        Select-Object -First 1
-
-    if (-not $tomcatFolder) {
-        throw "No se encontró la carpeta extraída de Tomcat."
-    }
-
-    $tomcatBase = $tomcatFolder.FullName
-    Write-Host "Tomcat instalado en: $tomcatBase" -ForegroundColor Green
-
-    # Validar estructura
-    $serverXml = Join-Path $tomcatBase "conf\server.xml"
     if (!(Test-Path $serverXml)) {
-        throw "Tomcat no contiene server.xml. Instalación inválida."
+        throw "Tomcat inválido: no existe server.xml"
     }
 
-    # Configurar puerto
-    Write-Host "Configurando puerto $Port..." -ForegroundColor Yellow
-
+    # configurar puerto HTTP
     $xml = Get-Content $serverXml -Raw
     $xml = $xml -replace 'port="8080"', "port=""$Port"""
-    Set-Content -Path $serverXml -Value $xml -Encoding UTF8
+    Set-Content $serverXml $xml -Encoding UTF8
 
-    # Página de prueba
-    $rootIndex = Join-Path $tomcatBase "webapps\ROOT\index.jsp"
-    Set-Content -Path $rootIndex -Value "<html><body><h1>Tomcat OK - reprobados.com</h1></body></html>" -Encoding UTF8
+    # página prueba
+    Set-Content (Join-Path $TOMCAT_BASE "webapps\ROOT\index.jsp") "<h1>Tomcat HTTP OK</h1>"
 
-    # Iniciar Tomcat
-    Write-Host "Iniciando Tomcat..." -ForegroundColor Yellow
-
-    $startup = Join-Path $tomcatBase "bin\startup.bat"
+    # iniciar Tomcat
+    $startup = Join-Path $TOMCAT_BASE "bin\startup.bat"
 
     if (!(Test-Path $startup)) {
         throw "No se encontró startup.bat"
     }
 
-    Start-Process $startup
+    Start-Process $startup -NoNewWindow
 
-    Write-Host "Tomcat corriendo en puerto $Port" -ForegroundColor Green
+    Write-Host "Tomcat HTTP en puerto $Port" -ForegroundColor Green
 }
