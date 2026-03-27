@@ -120,9 +120,10 @@ function Install-TomcatWeb {
     # Descargar Tomcat
     Write-Host "Descargando Tomcat..." -ForegroundColor Yellow
 
-    $url = "https://dlcdn.apache.org/tomcat/tomcat-10/v10.1.28/bin/apache-tomcat-10.1.28-windows-x64.zip"
-    Invoke-WebRequest -Uri $url -OutFile $zipPath
+    $url = "https://archive.apache.org/dist/tomcat/tomcat-10/v10.1.19/bin/apache-tomcat-10.1.19-windows-x64.zip"
 
+    Invoke-WebRequest -Uri $url -OutFile $zipPath
+    
     if (!(Test-Path $zipPath)) {
         throw "No se pudo descargar Tomcat."
     }
