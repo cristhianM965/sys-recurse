@@ -100,6 +100,50 @@ function Ensure-Java {
     Write-Host "Java instalado." -ForegroundColor Green
 }
 
+function Get-TomcatBase {
+    $svcNames = @("Tomcat10", "Apache Tomcat 10.1 Tomcat10", "tomcat")
+
+    foreach ($name in $svcNames) {
+        $svc = Get-CimInstance Win32_Service -ErrorAction SilentlyContinue | Where-Object {
+            $_.Name -eq $name -or $_.DisplayName -eq $name
+        } | Select-Object -First 1
+
+        if ($svc) {
+            $path = $svc.PathName
+
+            $serviceExe = [regex]::Match($path, '"([^"]*tomcat\d*\.exe)"').Groups[1].Value
+            if (-not $serviceExe) {
+                $serviceExe = [regex]::Match($path, '"([^"]*tomcat.*?\.exe)"').Groups[1].Value
+            }
+
+            if ($serviceExe -and (Test-Path $serviceExe)) {
+                return Split-Path (Split-Path $serviceExe -Parent) -Parent
+            }
+        }
+    }
+
+    $possible = @(
+        "C:\Program Files\Apache Software Foundation\Tomcat 10.1",
+        "C:\Program Files\Apache Software Foundation\Tomcat 10.0",
+        "C:\Tomcat",
+        "$env:ProgramFiles\Apache Software Foundation\Tomcat 10.1"
+    )
+
+    $found = $possible | Where-Object { Test-Path $_ } | Select-Object -First 1
+    if ($found) {
+        return $found
+    }
+
+    $serviceExe = Get-ChildItem -Path "C:\" -Filter "Tomcat10.exe" -Recurse -ErrorAction SilentlyContinue |
+        Select-Object -First 1 -ExpandProperty FullName
+
+    if ($serviceExe) {
+        return Split-Path (Split-Path $serviceExe -Parent) -Parent
+    }
+
+    throw "No se encontró la carpeta base de Tomcat."
+}
+
 function Install-TomcatWeb {
     param(
         [int]$Port
@@ -107,54 +151,42 @@ function Install-TomcatWeb {
 
     Write-Host "Instalando Tomcat..." -ForegroundColor Cyan
 
+    Ensure-Chocolatey
     Ensure-Java
 
-    $BASE_DIR = "C:\Tarea7"
-    $ZIP = "$BASE_DIR\tomcat.zip"
+    choco install tomcat -y --no-progress
 
-    if (!(Test-Path $BASE_DIR)) {
-        New-Item -ItemType Directory -Path $BASE_DIR | Out-Null
+    if ($LASTEXITCODE -ne 0) {
+        throw "No se pudo instalar Tomcat con Chocolatey."
     }
 
-    if (!(Test-Path $TOMCAT_BASE)) {
+    $tomcatBase = Get-TomcatBase
+    Write-Host "Tomcat detectado en: $tomcatBase" -ForegroundColor Green
 
-        Write-Host "Descargando Tomcat..." -ForegroundColor Yellow
-
-        $url = "https://archive.apache.org/dist/tomcat/tomcat-10/v10.1.19/bin/apache-tomcat-10.1.19-windows-x64.zip"
-
-        Invoke-WebRequest -Uri $url -OutFile $ZIP
-
-        if (!(Test-Path $ZIP)) {
-            throw "No se pudo descargar Tomcat"
-        }
-
-        Write-Host "Extrayendo Tomcat..." -ForegroundColor Yellow
-
-        Expand-Archive $ZIP -DestinationPath $BASE_DIR -Force
+    $serverXml = Join-Path $tomcatBase "conf\server.xml"
+    if (-not (Test-Path $serverXml)) {
+        throw "No se encontró server.xml en $serverXml"
     }
 
-    $serverXml = Join-Path $TOMCAT_BASE "conf\server.xml"
-
-    if (!(Test-Path $serverXml)) {
-        throw "Tomcat inválido: no existe server.xml"
-    }
-
-    # configurar puerto HTTP
     $xml = Get-Content $serverXml -Raw
+
     $xml = $xml -replace 'port="8080"', "port=""$Port"""
-    Set-Content $serverXml $xml -Encoding UTF8
+    $xml = $xml -replace 'redirectPort="8443"', 'redirectPort="8443"'
 
-    # página prueba
-    Set-Content (Join-Path $TOMCAT_BASE "webapps\ROOT\index.jsp") "<h1>Tomcat HTTP OK</h1>"
+    Set-Content -Path $serverXml -Value $xml -Encoding UTF8
 
-    # iniciar Tomcat
-    $startup = Join-Path $TOMCAT_BASE "bin\startup.bat"
-
-    if (!(Test-Path $startup)) {
-        throw "No se encontró startup.bat"
+    $rootIndex = Join-Path $tomcatBase "webapps\ROOT\index.jsp"
+    if (Test-Path $rootIndex) {
+        Set-Content -Path $rootIndex -Value "<html><body><h1>Tomcat Windows - reprobados.com</h1></body></html>" -Encoding UTF8
     }
 
-    Start-Process $startup -NoNewWindow
+    $service = Get-Service -Name "Tomcat*" -ErrorAction SilentlyContinue | Select-Object -First 1
+    if ($service) {
+        Restart-Service -Name $service.Name -Force
+    }
+    else {
+        throw "No se encontró el servicio de Tomcat."
+    }
 
-    Write-Host "Tomcat HTTP en puerto $Port" -ForegroundColor Green
+    Write-Host "Tomcat instalado y ejecutándose en puerto $Port" -ForegroundColor Green
 }
