@@ -6,53 +6,63 @@
 . .\lib\ssl.ps1
 
 while ($true) {
-
     Show-Menu
     $opt = Read-Host "Seleccione opción"
 
     switch ($opt) {
-
         "1" {
-            Write-Host "1) IIS"
+            Show-Services
             $svc = Read-Host "Seleccione servicio"
 
-            if ($svc -eq "1") {
+            switch ($svc) {
+                "1" {
+                    $port = Read-Host "Puerto para IIS"
 
-                $port = Read-Host "Puerto"
+                    if (-not (Test-PortAvailable $port)) {
+                        Write-Host "Puerto ocupado"
+                        continue
+                    }
 
-                if (-not (Test-PortAvailable $port)) {
-                    Write-Host "Puerto ocupado"
-                    continue
+                    Install-IIS
+
+                    $ssl = Read-Host "¿SSL? (S/N)"
+                    if ($ssl -eq "S") {
+                        $cert = New-SSL-Cert -Domain $DOMAIN
+                        Configure-IIS-HTTPS -Port $port -Cert $cert
+                    }
                 }
 
-                Install-IIS
+                "2" {
+                    $port = Read-Host "Puerto para Apache"
 
-                $ssl = Read-Host "¿SSL? (S/N)"
+                    if (-not (Test-PortAvailable $port)) {
+                        Write-Host "Puerto ocupado"
+                        continue
+                    }
 
-                if ($ssl -eq "S") {
-                    $cert = New-SSL-Cert -Domain $DOMAIN
-                    Configure-IIS-HTTPS -Port $port -Cert $cert
+                    Install-ApacheWeb -Port $port
+                }
+
+                "3" {
+                    Write-Host "Nginx (pendiente)"
+                }
+
+                "4" {
+                    Write-Host "FTP (pendiente)"
+                }
+
+                default {
+                    Write-Host "Opción inválida"
                 }
             }
         }
 
-       "2" {
-            $port = Read-Host "Puerto para Apache"
-
-            if (-not (Test-PortAvailable $port)) {
-                Write-Host "Puerto ocupado"
-                 continue
-            }
-
-            Install-ApacheWeb -Port $port
+        "2" {
+            break
         }
 
-        "3" {
-            Write-Host "Nginx (pendiente)"
-        }
-
-        "4" {
-            Write-Host "FTP (pendiente)"
+        default {
+            Write-Host "Opción inválida"
         }
     }
 }
