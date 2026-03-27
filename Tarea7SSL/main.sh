@@ -1,114 +1,121 @@
 #!/usr/bin/env bash
 
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 
-# ==========================================
-# TAREA 07: Orquestador Híbrido Linux
-# ==========================================
+source "$SCRIPT_DIR/lib/common.sh"
+source "$SCRIPT_DIR/lib/menu.sh"
+source "$SCRIPT_DIR/lib/ports.sh"
+source "$SCRIPT_DIR/lib/repo.sh"
+source "$SCRIPT_DIR/lib/install.sh"
+source "$SCRIPT_DIR/lib/ssl.sh"
+source "$SCRIPT_DIR/lib/uninstall.sh"
+source "$SCRIPT_DIR/lib/verify.sh"
 
-# 1. Importar librerías
-source ./lib/nginx.sh
-source ./lib/apache.sh
-source ./lib/tomcat.sh
-source ./lib/ftp_client.sh
-source ./lib/ssl_security.sh
-source ./lib/vsftpd.sh 
-source ./lib/utils.sh
+main_install() {
+  local service source use_ssl port_http port_https port_ftp
 
-while true; do
-    echo "=========================================="
-    echo "   Despliegue de Infraestructura Segura   "
-    echo "=========================================="
-    echo "Seleccione el servicio a instalar:"
-    echo "1) Apache"
-    echo "2) Nginx"
-    echo "3) Tomcat"
-    echo "4) vsftpd"
-    echo "5) 🚨 DESINSTALAR TODOS LOS SERVICIOS 🚨"  # <--- Agregas el texto aquí
-    echo "6) Salir"
-    read -p "Opción (1-6): " opcion_principal
+  service="$(choose_service)"
 
-    case $opcion_principal in
-        1) linux_apache_flow ;;
-        2) linux_nginx_flow ;;
-        3) linux_tomcat_flow ;;
-        4) linux_vsftpd_flow ;;
-        5) desinstalar_todo ;;                    # <--- Agregas la ejecución aquí
-        6) echo "Saliendo..."; exit 0 ;;
-        *) echo "Opción inválida." ;;
+  case "$service" in
+    Apache|Nginx|Tomcat)
+      port_http="$(ask_for_port "HTTP para $service")"
+
+      if ask_yes_no "¿Desea activar SSL para $service?"; then
+        use_ssl="yes"
+        port_https="$(ask_for_port "HTTPS para $service")"
+      else
+        use_ssl="no"
+      fi
+      ;;
+    vsftpd)
+      port_ftp="$(ask_for_port "FTP para vsftpd")"
+
+      if ask_yes_no "¿Desea activar SSL/FTPS para vsftpd?"; then
+        use_ssl="yes"
+      else
+        use_ssl="no"
+      fi
+      ;;
+  esac
+
+  source="$(choose_source)"
+
+  case "$source" in
+    WEB) install_from_web "$service" ;;
+    FTP) install_from_ftp "$service" ;;
+  esac
+
+  if [[ "$service" == "Apache" ]]; then
+    configure_apache_custom_ports "$port_http" "${port_https:-}" "$use_ssl"
+    verify_service apache2
+    verify_port "$port_http"
+    [[ "$use_ssl" == "yes" ]] && verify_port "$port_https" && verify_https apache "$port_https" || verify_http apache "$port_http"
+  fi
+
+  if [[ "$service" == "Nginx" ]]; then
+    configure_nginx_custom_ports "$port_http" "${port_https:-}" "$use_ssl"
+    verify_service nginx
+    verify_port "$port_http"
+    [[ "$use_ssl" == "yes" ]] && verify_port "$port_https" && verify_https nginx "$port_https" || verify_http nginx "$port_http"
+  fi
+
+  if [[ "$service" == "Tomcat" ]]; then
+    configure_tomcat_custom_ports "$port_http" "${port_https:-}" "$use_ssl"
+    systemctl is-active --quiet tomcat10 && verify_service tomcat10 || verify_service tomcat
+    verify_port "$port_http"
+    [[ "$use_ssl" == "yes" ]] && verify_port "$port_https" && verify_https tomcat "$port_https" || verify_http tomcat "$port_http"
+  fi
+
+  if [[ "$service" == "vsftpd" ]]; then
+    configure_vsftpd_custom_port "$port_ftp" "$use_ssl"
+    verify_service vsftpd
+    verify_port "$port_ftp"
+    [[ "$use_ssl" == "yes" ]] && verify_ftps "$port_ftp"
+  fi
+}
+
+main_uninstall() {
+  local service
+  service="$(choose_service)"
+
+  if ask_yes_no "¿Seguro que desea desinstalar $service?"; then
+    uninstall_service "$service"
+  else
+    log "Desinstalación cancelada para $service"
+  fi
+}
+
+main_status() {
+  echo
+  echo "========== ESTADO =========="
+  systemctl is-active apache2 2>/dev/null && echo "Apache: activo" || echo "Apache: inactivo/no instalado"
+  systemctl is-active nginx 2>/dev/null && echo "Nginx: activo" || echo "Nginx: inactivo/no instalado"
+  systemctl is-active tomcat10 2>/dev/null && echo "Tomcat10: activo" || systemctl is-active tomcat 2>/dev/null && echo "Tomcat: activo" || echo "Tomcat: inactivo/no instalado"
+  systemctl is-active vsftpd 2>/dev/null && echo "vsftpd: activo" || echo "vsftpd: inactivo/no instalado"
+  echo
+  echo "Puertos en escucha:"
+  ss -tuln
+}
+
+main() {
+  require_root
+  ensure_dirs
+  install_base_tools
+
+  local option
+  while true; do
+    show_main_menu
+    read -r -p "Seleccione una opción: " option
+
+    case "$option" in
+      1) main_install ;;
+      2) main_uninstall ;;
+      3) main_status ;;
+      4) show_summary ;;
+      5) exit 0 ;;
+      *) echo "Opción inválida." ;;
     esac
-done
+  done
+}
 
-echo "------------------------------------------"
-echo "Seleccione el origen de la instalación:"
-echo "1) WEB (Repositorios Oficiales / apt)"
-echo "2) FTP Privado (Instalador local + Hash)"
-read -p "Origen (1-2): " origen_opcion
-
-echo "------------------------------------------"
-echo "Iniciando despliegue de $SERVICIO..."
-
-# ==========================================
-# LÓGICA DE INSTALACIÓN (WEB vs FTP)
-# ==========================================
-
-if [ "$origen_opcion" -eq 1 ]; then
-    echo ">> Modo seleccionado: WEB (Repositorio Oficial)"
-    
-    if [ "$SERVICIO" == "Nginx" ]; then
-        # linux_nginx_flow
-        echo "Saltando instalacion de Nginx, yendo a seguridad..."
-    elif [ "$SERVICIO" == "Apache" ]; then
-        # linux_apache_flow
-        echo "Llamando a flujo de Apache..."
-    elif [ "$SERVICIO" == "Tomcat" ]; then
-        # linux_tomcat_flow
-        echo "Llamando a flujo de Tomcat..."
-    elif [ "$SERVICIO" == "vsftpd" ]; then
-        linux_vsftpd_flow
-    fi
-
-elif [ "$origen_opcion" -eq 2 ]; then
-    echo ">> Modo seleccionado: FTP Privado"
-    
-    # Pedir credenciales dinámicamente al usuario
-    read -p "Ingrese la IP o Dominio del servidor FTP: " input_ftp_ip
-    read -p "Ingrese el usuario FTP: " input_ftp_user
-    read -s -p "Ingrese la contraseña FTP: " input_ftp_pass
-    echo "" # Salto de línea limpio tras ingresar la contraseña oculta
-    
-    # Llamamos a la función y pasamos los datos como parámetros
-    if linux_ftp_download_and_verify "$SERVICIO" "$input_ftp_ip" "$input_ftp_user" "$input_ftp_pass"; then
-        echo "------------------------------------------"
-
-        # Instalación dinámica dependiendo del tipo de archivo
-        if [[ "$ARCHIVO_DESCARGADO" == *.deb ]]; then
-            export DEBIAN_FRONTEND=noninteractive
-            dpkg -i "$ARCHIVO_DESCARGADO"
-            apt-get install -f -y # Resuelve dependencias faltantes
-        elif [[ "$ARCHIVO_DESCARGADO" == *.tar.gz && "$SERVICIO" == "Tomcat" ]]; then
-            mkdir -p /opt/tomcat
-            tar -xzf "$ARCHIVO_DESCARGADO" -C /opt/tomcat --strip-components=1
-            echo "Tomcat extraído en /opt/tomcat"
-        else
-            echo "Formato de archivo no soportado para autoinstalación."
-            exit 1
-        fi
-        
-        echo "$SERVICIO instalado correctamente desde el repositorio FTP."
-    else
-        echo "Instalación abortada por fallos de integridad."
-        exit 1
-    fi
-else
-    echo "Origen no válido. Abortando."
-    exit 1
-fi
-
-# ==========================================
-# LÓGICA DE SEGURIDAD SSL (Se ejecutará al final)
-# ==========================================
-linux_ssl_flow "$SERVICIO"
-
-echo "=========================================="
-echo "   Despliegue finalizado con éxito.       "
-echo "=========================================="
+main "$@"
