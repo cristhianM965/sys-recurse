@@ -303,8 +303,8 @@ configure_tomcat_custom_ports() {
 
     # Inserta conector HTTPS correcto para PKCS12
     sed -i "/<Service name=\"Catalina\">/a\\
-    <Connector protocol=\"org.apache.coyote.http11.Http11NioProtocol\" port=\"$https_port\" maxThreads=\"200\" SSLEnabled=\"true\" scheme=\"https\" secure=\"true\" keystoreType=\"PKCS12\" keystoreFile=\"$CERT_P12\" keystorePass=\"$TOMCAT_P12_PASS\" sslProtocol=\"TLS\" />" "$server_xml"
-
+    <Connector port=\"$https_port\" protocol=\"HTTP/1.1\" maxThreads=\"200\" SSLEnabled=\"true\" scheme=\"https\" secure=\"true\" clientAuth=\"false\" keystoreType=\"PKCS12\" keystoreFile=\"$CERT_P12\" keystorePass=\"$TOMCAT_P12_PASS\" sslProtocol=\"TLS\" />" "$server_xml"
+    
     if [[ -n "$webxml" ]] && ! grep -q "HttpHeaderSecurityFilter" "$webxml"; then
       cp "$webxml" "$webxml.bak.$(date +%s)"
       sed -i '/<\/web-app>/i\
