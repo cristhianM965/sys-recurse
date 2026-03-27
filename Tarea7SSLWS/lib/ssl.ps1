@@ -112,8 +112,13 @@ function Configure-Apache-HTTPS {
     }
 
     if ($apacheService) {
-        Restart-Service -Name $apacheService.Name -Force
-    }
+        Write-Host "Reiniciando Apache correctamente..." -ForegroundColor Yellow
+
+        Stop-Service -Name "Apache" -Force
+        Start-Sleep -Seconds 3
+
+        Start-Service -Name "Apache"
+        Start-Sleep -Seconds 2
     else {
         throw "No se encontró el servicio de Apache para reiniciarlo."
     }
