@@ -119,6 +119,7 @@ function Configure-Apache-HTTPS {
 
         Start-Service -Name "Apache"
         Start-Sleep -Seconds 2
+    }
     else {
         throw "No se encontró el servicio de Apache para reiniciarlo."
     }
