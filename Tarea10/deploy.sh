@@ -2,9 +2,8 @@
 set -e
 
 # =========================================================================
-# VARIABLES DE CONFIGURACIÓN (Edita esto en VS Code antes de clonar)
+# VARIABLES DE CONFIGURACIÓN
 # =========================================================================
-# Detecta automáticamente la interfaz principal, pero puedes forzarla (ej. IFACE="enp0s3")
 IFACE=$(ip -o link show | awk -F': ' '{print $2}' | grep -v lo | head -n 1)
 IP="192.168.1.100"
 PREFIX="24"
@@ -24,6 +23,19 @@ require_root() {
 pause(){
     echo ""
     read -p "Presiona ENTER para tomar la captura y continuar a la siguiente prueba..."
+}
+
+validar_dependencias() {
+    echo "=== 0. VALIDANDO DEPENDENCIAS ==="
+    if ! command -v docker &> /dev/null; then
+        echo "Docker no detectado. Instalando motor y dependencias (esto tomará un momento)..."
+        apt-get update -qq
+        apt-get install -y docker.io docker-compose-plugin
+        echo "Docker instalado exitosamente."
+    else
+        echo "Docker ya está instalado. Omitiendo."
+    fi
+    echo "----------------------------------------"
 }
 
 configurar_red() {
@@ -46,7 +58,10 @@ network:
       nameservers:
         addresses: [$DNS]
 EOF
-
+    
+    # Solución al Warning de seguridad de Netplan
+    chmod 600 $NETPLAN_FILE
+    
     netplan apply
     sleep 3
     ip a | grep $IP
@@ -58,7 +73,6 @@ preparar_docker() {
     echo "=== 2. PREPARANDO ARCHIVOS DOCKER ==="
     mkdir -p web
 
-    # Crear index.html
     cat << 'EOF' > web/index.html
 <!DOCTYPE html>
 <html lang="es">
@@ -73,7 +87,6 @@ preparar_docker() {
 </html>
 EOF
 
-    # Crear Dockerfile
     cat << 'EOF' > web/Dockerfile
 FROM alpine:latest
 RUN apk update && apk add --no-cache apache2
@@ -90,7 +103,6 @@ EXPOSE 8080
 CMD ["httpd", "-D", "FOREGROUND"]
 EOF
 
-    # Crear docker-compose.yml
     cat << 'EOF' > docker-compose.yml
 version: '3.8'
 services:
@@ -206,6 +218,7 @@ main(){
     require_root
     clear
     echo "Iniciando despliegue automatizado..."
+    validar_dependencias
     configurar_red
     preparar_docker
     desplegar_infraestructura
