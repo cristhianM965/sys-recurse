@@ -1,18 +1,6 @@
 #!/bin/bash
 set -e
 
-# =========================================================================
-# VARIABLES DE CONFIGURACIÓN
-# =========================================================================
-IFACE=$(ip -o link show | awk -F': ' '{print $2}' | grep -v lo | head -n 1)
-IP="192.168.1.100"
-PREFIX="24"
-GW="192.168.1.254"
-DNS="8.8.8.8"
-
-NETPLAN_FILE="/etc/netplan/01-netcfg.yaml"
-# =========================================================================
-
 require_root() {
     if [[ $EUID -ne 0 ]]; then
         echo "Error: Ejecuta este script con sudo."
@@ -28,9 +16,9 @@ pause(){
 validar_dependencias() {
     echo "=== 0. VALIDANDO DEPENDENCIAS ==="
     if ! command -v docker &> /dev/null; then
-        echo "Docker no detectado. Instalando motor y dependencias (esto tomará un momento)..."
+        echo "Docker no detectado. Instalando motor..."
         apt-get update -qq
-        apt-get install -y docker.io docker-compose-plugin
+        apt-get install -y docker.io docker-compose
         echo "Docker instalado exitosamente."
     else
         echo "Docker ya está instalado. Omitiendo."
@@ -38,39 +26,8 @@ validar_dependencias() {
     echo "----------------------------------------"
 }
 
-configurar_red() {
-    echo "=== 1. CONFIGURANDO RED (NETPLAN) ==="
-    echo "Creando respaldo de netplan..."
-    cp /etc/netplan/*.yaml /etc/netplan/backup.yaml 2>/dev/null || true
-
-    echo "Aplicando IP $IP/$PREFIX a la interfaz $IFACE..."
-    cat <<EOF > $NETPLAN_FILE
-network:
-  version: 2
-  renderer: networkd
-  ethernets:
-    $IFACE:
-      addresses:
-        - $IP/$PREFIX
-      routes:
-        - to: default
-          via: $GW
-      nameservers:
-        addresses: [$DNS]
-EOF
-    
-    # Solución al Warning de seguridad de Netplan
-    chmod 600 $NETPLAN_FILE
-    
-    netplan apply
-    sleep 3
-    ip a | grep $IP
-    echo "Red configurada correctamente."
-    echo "----------------------------------------"
-}
-
 preparar_docker() {
-    echo "=== 2. PREPARANDO ARCHIVOS DOCKER ==="
+    echo "=== 1. PREPARANDO ARCHIVOS DOCKER ==="
     mkdir -p web
 
     cat << 'EOF' > web/index.html
@@ -88,7 +45,7 @@ preparar_docker() {
 EOF
 
     cat << 'EOF' > web/Dockerfile
-FROM alpine:latest
+FROM alpine:3.13
 RUN apk update && apk add --no-cache apache2
 RUN sed -i 's/ServerTokens OS/ServerTokens Prod/g' /etc/apache2/httpd.conf
 RUN sed -i 's/ServerSignature On/ServerSignature Off/g' /etc/apache2/httpd.conf
@@ -171,23 +128,23 @@ EOF
 }
 
 desplegar_infraestructura() {
-    echo "=== 3. LEVANTANDO INFRAESTRUCTURA ==="
+    echo "=== 2. LEVANTANDO INFRAESTRUCTURA ==="
     docker network create infra_red 2>/dev/null || true
     docker volume create db_data 2>/dev/null || true
     docker volume create web_content 2>/dev/null || true
 
-    docker compose up -d --build
+    docker-compose up -d --build
     echo "Contenedores en línea."
     echo "----------------------------------------"
 }
 
 ejecutar_pruebas() {
-    echo "=== 4. EJECUCIÓN DE PRUEBAS (PREPARA TUS CAPTURAS) ==="
+    echo "=== 3. EJECUCIÓN DE PRUEBAS (PREPARA TUS CAPTURAS) ==="
     
     echo -e "\n[Prueba 10.1] Persistencia de BD"
     docker exec -t servidor_bd psql -U admin -d practica10_db -c "CREATE TABLE test (id int);"
     docker rm -f servidor_bd > /dev/null
-    docker compose up -d db > /dev/null
+    docker-compose up -d db > /dev/null
     sleep 2
     docker exec -t servidor_bd psql -U admin -d practica10_db -c "\dt"
     echo "---> [CAPTURA LA SALIDA ANTERIOR PARA EL TEST 10.1]"
@@ -201,9 +158,9 @@ ejecutar_pruebas() {
 
     clear
     echo -e "\n[Prueba 10.3] Permisos FTP"
-    echo "Conéctate por FileZilla a la IP: $IP"
+    echo "Conéctate por FileZilla a la IP actual de tu máquina virtual."
     echo "Usuario: kami | Contraseña: Sistemas.2026!"
-    echo "Sube un archivo y revisa http://$IP/tu_archivo"
+    echo "Sube un archivo y revisa http://<TU_IP>/tu_archivo"
     echo "---> [TOMA CAPTURA DE FILEZILLA Y DEL NAVEGADOR PARA EL TEST 10.3]"
     pause
 
@@ -217,9 +174,8 @@ ejecutar_pruebas() {
 main(){
     require_root
     clear
-    echo "Iniciando despliegue automatizado..."
+    echo "Iniciando despliegue de contenedores (Docker-Only)..."
     validar_dependencias
-    configurar_red
     preparar_docker
     desplegar_infraestructura
     ejecutar_pruebas
